@@ -2,6 +2,32 @@ import Foundation
 import CryptoKit
 import Security
 
+enum SpotifyConnectionPhase: Equatable {
+    case browser, token, keychain
+
+    var title: String {
+        switch self {
+        case .browser: return "Finish sign-in in your browser"
+        case .token: return "Connecting to Spotify…"
+        case .keychain: return "Saving your Spotify sign-in…"
+        }
+    }
+    var timeout: TimeInterval {
+        switch self {
+        case .browser: return 300
+        case .token: return 30
+        case .keychain: return 10
+        }
+    }
+    var timeoutMessage: String {
+        switch self {
+        case .browser: return "Spotify sign-in timed out. Connect again and finish sign-in in your browser."
+        case .token: return "Spotify took too long to connect. Check your connection and try again."
+        case .keychain: return "macOS took too long to save your sign-in. Unlock your Mac and reconnect Spotify."
+        }
+    }
+}
+
 // Pure helpers shared with the credential-free command-line checks.
 enum SpotifyAuthorization {
     static let redirectURI = "http://127.0.0.1:8898/callback"

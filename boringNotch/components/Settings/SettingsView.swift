@@ -660,12 +660,21 @@ struct Media: View {
                         .autocorrectionDisabled()
                         .onSubmit(connectSpotify)
                     HStack {
-                        Button(spotifyLibrary.isConnecting ? "Waiting for Spotify…" : "Connect Spotify", action: connectSpotify)
-                            .disabled(spotifyLibrary.isConnecting || spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         if spotifyLibrary.isConnecting {
                             ProgressView().controlSize(.small)
-                            Button("Cancel", action: spotifyLibrary.disconnect)
+                            Text(spotifyLibrary.connectionPhase?.title ?? "Connecting Spotify…")
+                            if spotifyLibrary.connectionPhase == .browser {
+                                Button("Continue in browser", action: spotifyLibrary.resumeSignIn)
+                            }
+                            Button("Cancel", action: spotifyLibrary.cancelConnection)
+                        } else {
+                            Button("Connect Spotify", action: connectSpotify)
+                                .disabled(spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
+                    }
+                    if spotifyLibrary.connectionPhase == .browser {
+                        Text("Finish signing in to Spotify in your browser, then choose Agree.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 if let error = spotifyLibrary.errorMessage {

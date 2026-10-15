@@ -33,7 +33,9 @@ Playback controls work through the installed Spotify Mac app. Browsing your libr
 
 1. Create an app in the [Spotify developer dashboard](https://developer.spotify.com/dashboard) and register `http://127.0.0.1:8898/callback` as its redirect URI.
 2. Paste your own Client ID into **Settings → Media → Spotify library**. A client secret is not needed.
-3. Choose **Connect Spotify** and finish sign-in in your browser. Return to the island to browse.
+3. Choose **Connect Spotify**, finish sign-in in your browser and choose **Agree**. Return to the island to browse. If you lose the tab, **Continue in browser** reopens the current sign-in attempt.
+
+The island shows whether it is waiting for browser sign-in, connecting to Spotify or saving the connection. Each step times out with a retry message. **Cancel** stops sign-in without removing an existing connection.
 
 Spotify currently requires a Premium account for a development-mode app's owner and allows up to five authenticated users, each on the app's allowlist. See [Spotify's quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes). Public builds use your own Client ID rather than a shared developer app.
 

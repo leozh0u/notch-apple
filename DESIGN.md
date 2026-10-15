@@ -65,6 +65,8 @@ Album and playlist shelves scroll horizontally. Tiles use 66 pt square artwork i
 
 Previous page and Next page share a 20 pt footer. Their enabled states follow the current offset and page metadata. Keep metadata bounded to the current page (20 albums/playlists, 50 collection tracks or 10 search results). Show loading, empty, retry and connection states in the content area. Set up Spotify leads to Media settings; browser sign-in uses PKCE with Keychain tokens and the three read-only library/playlist scopes. Playback uses the installed Spotify app hidden in the background.
 
+Connection progress names the current step: finish sign-in in the browser, connect to Spotify, then save sign-in. The browser step explains choosing Agree and includes Continue in browser. Cancel stops the attempt without disconnecting an existing account. Browser, network and Keychain waits have separate deadlines and retry messages.
+
 This is a core music-library browser. Preserve its implemented scope: album, song and playlist browsing, Songs/Albums search and native playback. Queue editing, recommendations, podcasts, artist search and account management are outside this interface.
 
 ### Focus timer and duration dial

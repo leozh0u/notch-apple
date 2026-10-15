@@ -13,6 +13,7 @@ final class SpotifyLibrary: ObservableObject {
 
     @Published private(set) var isConnected = false
     @Published private(set) var isConnecting = false
+    @Published private(set) var connectionPhase: SpotifyConnectionPhase?
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var albums: [SpotifyAlbum] = []
@@ -47,6 +48,8 @@ final class SpotifyLibrary: ObservableObject {
     private var credentials: SpotifyCredentials?
     private var callbackServer: SpotifyCallbackServer?
     private var connectionTask: Task<Void, Never>?
+    private var connectionTimeoutTask: Task<Void, Never>?
+    private var pendingAuthorizationURL: URL?
     private let refreshTransaction = SpotifyRefreshTransaction<SpotifyCredentials>()
     private var accountGeneration = UUID()
     private var latestLoad = UUID()
@@ -71,6 +74,7 @@ final class SpotifyLibrary: ObservableObject {
 
     private init() {
         session = Self.makeSession()
+        #if !SPOTIFY_KEYCHAIN_TESTING
         let generation = accountGeneration
         // Keychain ACL checks may involve securityd; never perform them on the UI thread.
         Task { [weak self] in
@@ -90,6 +94,7 @@ final class SpotifyLibrary: ObservableObject {
                 self.errorMessage = error.localizedDescription
             }
         }
+        #endif
     }
 
     func connect() {
@@ -102,6 +107,7 @@ final class SpotifyLibrary: ObservableObject {
         isConnecting = true
         let generation = UUID()
         accountGeneration = generation
+        setConnectionPhase(.browser)
         let selectedClientID = clientID
         do {
             let state = try SpotifyAuthorization.randomURLSafeString()
@@ -109,21 +115,24 @@ final class SpotifyLibrary: ObservableObject {
             guard let url = SpotifyAuthorization.authorizationURL(clientID: selectedClientID, state: state, verifier: verifier) else {
                 throw SpotifyLibraryError.message("The Spotify Client ID is invalid.")
             }
+            pendingAuthorizationURL = url
             let server = try SpotifyCallbackServer(expectedState: state)
             callbackServer = server
             server.start(onReady: { [weak self] in
-                guard let self, self.accountGeneration == generation else { return }
+                guard let self, self.accountGeneration == generation, self.isConnecting else { return }
                 if !NSWorkspace.shared.open(url) {
                     self.finishConnecting(error: "Could not open your browser for Spotify. Try again.")
                 }
             }, completion: { [weak self] result in
-                guard let self, self.accountGeneration == generation else { return }
+                guard let self, self.accountGeneration == generation, self.isConnecting else { return }
                 self.callbackServer?.cancel()
                 self.callbackServer = nil
                 switch result {
                 case .failure(let error): self.finishConnecting(error: error.localizedDescription)
                 case .success(.denied): self.finishConnecting(error: "Spotify connection cancelled. You can connect whenever you're ready.")
                 case .success(.code(let code)):
+                    self.pendingAuthorizationURL = nil
+                    self.setConnectionPhase(.token)
                     self.connectionTask = Task { [weak self] in
                         guard let self else { return }
                         do {
@@ -133,14 +142,15 @@ final class SpotifyLibrary: ObservableObject {
                                 "code_verifier": verifier
                             ], clientID: selectedClientID, previousRefreshToken: nil)
                             try Task.checkCancellation()
-                            guard self.accountGeneration == generation else { return }
+                            guard self.accountGeneration == generation, self.isConnecting else { return }
+                            self.setConnectionPhase(.keychain)
                             try await self.persist(token, generation: generation, allowReplacingDeniedItem: true)
                             self.credentials = token
                             self.isConnected = true
                             self.finishConnecting(error: nil)
                             await self.loadSavedAlbums()
                         } catch is CancellationError {} catch {
-                            guard self.accountGeneration == generation else { return }
+                            guard self.accountGeneration == generation, self.isConnecting else { return }
                             self.finishConnecting(error: error.localizedDescription)
                         }
                     }
@@ -149,7 +159,57 @@ final class SpotifyLibrary: ObservableObject {
         } catch { finishConnecting(error: "Could not start Spotify sign-in. Port 8898 may be busy; close another sign-in attempt and retry.") }
     }
 
+    func resumeSignIn() {
+        guard isConnecting, connectionPhase == .browser, let url = pendingAuthorizationURL else { return }
+        if !NSWorkspace.shared.open(url) {
+            cancelConnection(error: "Could not open your browser for Spotify. Try connecting again.")
+        }
+    }
+
+    func cancelConnection() { cancelConnection(error: nil) }
+
+    private func cancelConnection(error: String?) {
+        guard isConnecting else { return }
+        accountGeneration = UUID()
+        connectionTask?.cancel()
+        connectionTask = nil
+        refreshTransaction.cancel()
+        finishConnecting(error: error)
+        // Cancelling sign-in must not disconnect an existing account or delete its Keychain item.
+    }
+
+    private func setConnectionPhase(_ phase: SpotifyConnectionPhase, timeout: TimeInterval? = nil) {
+        connectionTimeoutTask?.cancel()
+        connectionPhase = phase
+        let generation = accountGeneration
+        let deadline = Date().addingTimeInterval(timeout ?? phase.timeout)
+        connectionTimeoutTask = Task { [weak self] in
+            // Recheck wall time after sleep/wake; never leave a stale sign-in spinner.
+            while Date() < deadline {
+                let remaining = min(1, deadline.timeIntervalSinceNow)
+                guard remaining > 0 else { break }
+                do { try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000)) } catch { return }
+            }
+            guard !Task.isCancelled, let self, self.accountGeneration == generation,
+                  self.isConnecting, self.connectionPhase == phase else { return }
+            self.cancelConnection(error: phase.timeoutMessage)
+        }
+    }
+
+    #if SPOTIFY_KEYCHAIN_TESTING
+    static func connectedForTesting() -> SpotifyLibrary {
+        let library = SpotifyLibrary()
+        library.isConnected = true
+        return library
+    }
+    func beginConnectionForTesting(_ phase: SpotifyConnectionPhase, timeout: TimeInterval) {
+        isConnecting = true
+        setConnectionPhase(phase, timeout: timeout)
+    }
+    #endif
+
     func disconnect() {
+        cancelConnection()
         accountGeneration = UUID()
         latestLoad = UUID()
         connectionTask?.cancel()
@@ -366,10 +426,15 @@ final class SpotifyLibrary: ObservableObject {
     }
     private func endLoad(_ id: UUID) { if latestLoad == id { isLoading = false } }
     private func show(_ error: Error, loadID: UUID, generation: UUID) {
-        guard latestLoad == loadID, accountGeneration == generation, !(error is CancellationError) else { return }
+        guard latestLoad == loadID, accountGeneration == generation, !(error is CancellationError),
+              (error as? URLError)?.code != .cancelled else { return }
         errorMessage = error is URLError ? "Spotify could not be reached. Check your connection and try again." : error.localizedDescription
     }
     private func finishConnecting(error: String?) {
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = nil
+        pendingAuthorizationURL = nil
+        connectionPhase = nil
         callbackServer?.cancel()
         callbackServer = nil
         isConnecting = false
@@ -577,7 +642,6 @@ private final class SpotifyCallbackServer {
     private let listener: NWListener
     private let expectedState: String
     private var completion: ((Result<SpotifyAuthorization.Callback, Error>) -> Void)?
-    private var timeout: Task<Void, Never>?
     private var connections: [UUID: NWConnection] = [:]
     private var finished = false
 
@@ -605,15 +669,10 @@ private final class SpotifyCallbackServer {
             Task { @MainActor in self?.accept(connection) }
         }
         listener.start(queue: .main)
-        timeout = Task { [weak self] in
-            do { try await Task.sleep(nanoseconds: 180_000_000_000) } catch { return }
-            self?.finish(.failure(SpotifyLibraryError.message("Spotify sign-in timed out. Connect again when you're ready.")))
-        }
     }
 
     func cancel() {
         finished = true
-        timeout?.cancel()
         listener.cancel()
         connections.values.forEach { $0.cancel() }
         connections.removeAll()

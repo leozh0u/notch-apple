@@ -184,15 +184,24 @@ struct SpotifyBrowserView: View {
 
     private var connectionState: some View {
         VStack(spacing: 8) {
-            Text(library.isConnecting ? "Waiting for Spotify…" : "Connect your Spotify library")
+            Text(library.connectionPhase?.title ?? "Connect your Spotify library")
                 .font(.system(size: 13, weight: .medium))
+            if library.connectionPhase == .browser {
+                Text("Finish signing in to Spotify in your browser, then choose Agree.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
             if let error = library.errorMessage {
                 Text(error).font(.caption).lineLimit(2).multilineTextAlignment(.center)
             }
             HStack {
                 if library.isConnecting {
                     ProgressView().controlSize(.small)
-                    Button("Cancel", action: library.disconnect)
+                    if library.connectionPhase == .browser {
+                        Button("Continue in browser", action: library.resumeSignIn)
+                            .buttonStyle(.borderedProminent).tint(.effectiveAccent)
+                    }
+                    Button("Cancel", action: library.cancelConnection)
                 } else if !library.clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Button("Connect Spotify", action: library.connect)
                         .buttonStyle(.borderedProminent).tint(.effectiveAccent)

@@ -71,6 +71,7 @@ struct SpotifyLibraryChecks {
         } catch is DecodingError {}
         checkPageWindows()
         try checkLibraryFixtures(trackJSON: trackJSON)
+        try await checkConnectionLifecycle()
         try await checkRefreshTransactions()
         #if SPOTIFY_KEYCHAIN_TESTING
         try await checkKeychainWorker()
@@ -161,6 +162,28 @@ struct SpotifyLibraryChecks {
         let wrappedPage = "[{\"track\":\(trackJSON)},{\"item\":null},null,{\"item\":\(episode)},{\"item\":\(trackJSON)}]"
         let entries = try decoder.decode([SpotifyTrackItem].self, from: Data(wrappedPage.utf8))
         precondition(entries.count == 5 && entries.compactMap(\.track).count == 2, "Mixed playlist entries retain valid music")
+    }
+
+    @MainActor
+    private static func checkConnectionLifecycle() async throws {
+        let library = SpotifyLibrary.connectedForTesting()
+        for phase: SpotifyConnectionPhase in [.browser, .token, .keychain] {
+            library.beginConnectionForTesting(phase, timeout: 0.01)
+            try await Task.sleep(nanoseconds: 30_000_000)
+            precondition(!library.isConnecting && library.connectionPhase == nil, "Every connection phase has a deadline")
+            precondition(library.errorMessage == phase.timeoutMessage, "Timeout identifies the stalled phase")
+            precondition(library.isConnected, "Timeout must preserve an existing connection")
+        }
+        library.beginConnectionForTesting(.browser, timeout: 0.01)
+        library.beginConnectionForTesting(.token, timeout: 0.1)
+        try await Task.sleep(nanoseconds: 30_000_000)
+        precondition(library.isConnecting && library.connectionPhase == .token, "Old browser deadline cannot cancel token exchange")
+        library.cancelConnection()
+        precondition(library.isConnected && !library.isConnecting && library.errorMessage == nil, "Cancel preserves account and clears attempt")
+        library.beginConnectionForTesting(.browser, timeout: 1)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        precondition(library.isConnecting && library.connectionPhase == .browser, "Cancelled token deadline cannot cancel a new attempt")
+        library.cancelConnection()
     }
 
     @MainActor
