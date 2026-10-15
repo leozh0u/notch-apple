@@ -865,12 +865,15 @@ struct About: View {
                     Text("Version info")
                 }
 
-                UpdaterSettingsView(updater: updaterController.updater)
+                Section("Notch Apple") {
+                    Text("Personal build. Updates are installed manually.")
+                    Link("Based on Boring Notch · GPL-3.0", destination: URL(string: "https://github.com/TheBoredTeam/boring.notch")!)
+                }
 
                 HStack(spacing: 30) {
                     Spacer(minLength: 0)
                     Button {
-                        if let url = URL(string: "https://github.com/TheBoredTeam/boring.notch") {
+                        if let url = URL(string: "https://github.com/leozh0u/notch-apple") {
                             NSWorkspace.shared.open(url)
                         }
                     } label: {
@@ -889,7 +892,7 @@ struct About: View {
             }
             VStack(spacing: 0) {
                 Divider()
-                Text("Made with 🫶🏻 by not so boring not.people")
+                Text("Customized by Leo Zhou · Boring Notch contributors")
                     .foregroundStyle(.secondary)
                     .padding(.top, 5)
                     .padding(.bottom, 7)
@@ -1165,8 +1168,8 @@ struct Appearance: View {
     @Default(.customVisualizers) var customVisualizers
     @Default(.selectedVisualizer) var selectedVisualizer
 
-    let icons: [String] = ["logo2"]
-    @State private var selectedIcon: String = "logo2"
+    let icons: [String] = ["NotchAppleMark"]
+    @State private var selectedIcon: String = "NotchAppleMark"
     @State private var selectedListVisualizer: CustomVisualizer? = nil
     @State private var isPresented: Bool = false
     @State private var name: String = ""
@@ -1174,6 +1177,14 @@ struct Appearance: View {
     @State private var speed: CGFloat = 1.0
     var body: some View {
         Form {
+            Section("Notch Apple") {
+                Defaults.Toggle("Gentle music animation", key: .gentleMotion)
+                Defaults.Toggle("Focus timer and quick controls", key: .showFocusControls)
+                Text("Music animation follows macOS Reduce Motion. The timer resets when you quit.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section {
                 Toggle("Always show tabs", isOn: $coordinator.alwaysShowTabs)
                 Defaults.Toggle(key: .settingsIconInNotch) {
@@ -1418,8 +1429,8 @@ struct Advanced: View {
     
     @State private var customAccentColor: Color = .accentColor
     @State private var selectedPresetColor: PresetAccentColor? = nil
-    let icons: [String] = ["logo2"]
-    @State private var selectedIcon: String = "logo2"
+    let icons: [String] = ["NotchAppleMark"]
+    @State private var selectedIcon: String = "NotchAppleMark"
     
     // macOS accent colors
     enum PresetAccentColor: String, CaseIterable, Identifiable {

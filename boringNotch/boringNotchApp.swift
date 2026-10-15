@@ -17,34 +17,50 @@ struct DynamicNotchApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Default(.menubarIcon) var showMenuBarIcon
     @Environment(\.openWindow) var openWindow
+    @ObservedObject private var coordinator = BoringViewCoordinator.shared
 
     let updaterController: SPUStandardUpdaterController
 
     init() {
         updaterController = SPUStandardUpdaterController(
-            startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+            startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
 
         // Initialize the settings window controller with the updater controller
         SettingsWindowController.shared.setUpdaterController(updaterController)
     }
 
     var body: some Scene {
-        MenuBarExtra("boring.notch", systemImage: "sparkle", isInserted: $showMenuBarIcon) {
+        MenuBarExtra("Notch Apple", systemImage: "sparkle", isInserted: $showMenuBarIcon) {
+            Toggle("Keep island open", isOn: Binding(
+                get: { coordinator.isIslandPinned },
+                set: { appDelegate.setIslandPinned($0) }
+            ))
+            Divider()
             Button("Settings") {
                 DispatchQueue.main.async {
                     SettingsWindowController.shared.showWindow()
                 }
             }
             .keyboardShortcut(KeyEquivalent(","), modifiers: .command)
-            CheckForUpdatesView(updater: updaterController.updater)
             Divider()
-            Button("Restart Boring Notch") {
+            Button("Restart Notch Apple") {
                 ApplicationRelauncher.restart()
             }
             Button("Quit", role: .destructive) {
                 NSApplication.shared.terminate(self)
             }
             .keyboardShortcut(KeyEquivalent("Q"), modifiers: .command)
+        }
+        .commands {
+            CommandMenu("Island") {
+                Toggle("Keep island open", isOn: Binding(
+                    get: { coordinator.isIslandPinned },
+                    set: { appDelegate.setIslandPinned($0) }
+                ))
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                Button("Settings") { SettingsWindowController.shared.showWindow() }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
         }
     }
 }
@@ -67,6 +83,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var isScreenLocked: Bool = false
     private var windowScreenDidChangeObserver: Any?
     private var dragDetectors: [String: DragDetector] = [:] // UUID -> DragDetector
+
+    func setIslandPinned(_ pinned: Bool) {
+        coordinator.isIslandPinned = pinned
+        let models = Defaults[.showOnAllDisplays] ? Array(viewModels.values) : [vm]
+        for model in models {
+            if pinned { model.open() } else { model.close() }
+        }
+    }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false

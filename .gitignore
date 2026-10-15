@@ -53,3 +53,6 @@ build/
 *.xcarchive
 *.dSYM
 
+
+# Local native UI verification captures
+.impeccable/review/

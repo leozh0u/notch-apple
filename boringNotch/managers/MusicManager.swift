@@ -29,8 +29,8 @@ class MusicManager: ObservableObject {
     private var activeController: (any MediaControllerProtocol)?
 
     // Published properties for UI
-    @Published var songTitle: String = "I'm Handsome"
-    @Published var artistName: String = "Me"
+    @Published var songTitle: String = "Nothing playing"
+    @Published var artistName: String = "Choose a track to get started"
     @Published var albumArt: NSImage = defaultImage
     @Published var isPlaying = false
     @Published var album: String = "Self Love"

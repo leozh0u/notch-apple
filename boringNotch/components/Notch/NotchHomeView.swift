@@ -52,7 +52,7 @@ struct AlbumArtView: View {
             .scaleEffect(x: 1.3, y: 1.4)
             .rotationEffect(.degrees(92))
             .blur(radius: 40)
-            .opacity(musicManager.isPlaying ? 0.5 : 0)
+            .opacity(musicManager.isPlaying ? 0.18 : 0)
     }
 
     private var albumArtButton: some View {
@@ -145,8 +145,8 @@ struct MusicControlsView: View {
                 frameWidth: width)
             MarqueeText(
                 $musicManager.artistName,
-                font: .headline,
-                nsFont: .headline,
+                font: .subheadline,
+                nsFont: .subheadline,
                 textColor: Defaults[.playerColorTinting]
                     ? Color(nsColor: musicManager.avgColor)
                         .ensureMinimumBrightness(factor: 0.6) : .gray,
@@ -241,7 +241,7 @@ struct MusicControlsView: View {
     private func slotView(for slot: MusicControlButton) -> some View {
         switch slot {
         case .shuffle:
-            HoverButton(icon: "shuffle", iconColor: musicManager.isShuffled ? .red : .primary, scale: .medium) {
+            HoverButton(icon: "shuffle", iconColor: musicManager.isShuffled ? Color(nsColor: musicManager.avgColor).ensureMinimumBrightness(factor: 0.8) : .primary, scale: .medium) {
                 MusicManager.shared.toggleShuffle()
             }
         case .previous:
@@ -249,9 +249,18 @@ struct MusicControlsView: View {
                 MusicManager.shared.previousTrack()
             }
         case .playPause:
-            HoverButton(icon: musicManager.isPlaying ? "pause.fill" : "play.fill", scale: .large) {
+            Button {
                 MusicManager.shared.togglePlay()
+            } label: {
+                Image(systemName: musicManager.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .frame(width: 38, height: 38)
+                    .background(.white, in: Circle())
+                    .contentTransition(.symbolEffect(.replace))
             }
+            .help(musicManager.isPlaying ? "Pause music" : "Play music")
+            .accessibilityLabel(musicManager.isPlaying ? "Pause music" : "Play music")
         case .next:
             HoverButton(icon: "forward.fill", scale: .medium) {
                 MusicManager.shared.nextTrack()
@@ -293,7 +302,7 @@ struct MusicControlsView: View {
         case .off:
             return .primary
         case .all, .one:
-            return .red
+            return Color(nsColor: musicManager.avgColor).ensureMinimumBrightness(factor: 0.8)
         }
     }
 }
@@ -424,11 +433,18 @@ struct NotchHomeView: View {
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     let albumArtNamespace: Namespace.ID
+    @Default(.showFocusControls) private var showFocusControls
 
     var body: some View {
         Group {
             if !coordinator.firstLaunch {
-                mainContent
+                VStack(spacing: 12) {
+                    mainContent
+                        .frame(maxHeight: .infinity)
+                    if showFocusControls {
+                        NotchAppleControls()
+                    }
+                }
             }
         }
         // simplified: use a straightforward opacity transition

@@ -1,125 +1,34 @@
 //
 //  MusicVisualizer.swift
-//  boringNotch
+//  Created by Harsh Vardhan Goswami on 02/08/24.
+//  Modified for Notch Apple, 15 October 2026. GPL-3.0.
 //
-//  Created by Harsh Vardhan  Goswami  on 02/08/24.
-//
-import AppKit
-import Cocoa
+import Defaults
 import SwiftUI
 
-class AudioSpectrum: NSView {
-    private var barLayers: [CAShapeLayer] = []
-    private var barScales: [CGFloat] = []
-    private var isPlaying: Bool = true
-    private var animationTimer: Timer?
-    
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        setupBars()
-    }
-    
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        wantsLayer = true
-        setupBars()
-    }
-
-    private func setupBars() {
-        let barWidth: CGFloat = 2
-        let barCount = 4
-        let spacing: CGFloat = barWidth
-        let totalWidth = CGFloat(barCount) * (barWidth + spacing)
-        let totalHeight: CGFloat = 14
-        frame.size = CGSize(width: totalWidth, height: totalHeight)
-
-        for i in 0 ..< barCount {
-            let xPosition = CGFloat(i) * (barWidth + spacing)
-            let barLayer = CAShapeLayer()
-            barLayer.frame = CGRect(x: xPosition, y: 0, width: barWidth, height: totalHeight)
-            barLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-            barLayer.position = CGPoint(x: xPosition + barWidth / 2, y: totalHeight / 2)
-            barLayer.fillColor = NSColor.white.cgColor
-            barLayer.backgroundColor = NSColor.white.cgColor
-            barLayer.allowsGroupOpacity = false
-            barLayer.masksToBounds = true
-            let path = NSBezierPath(roundedRect: CGRect(x: 0, y: 0, width: barWidth, height: totalHeight),
-                                    xRadius: barWidth / 2,
-                                    yRadius: barWidth / 2)
-            barLayer.path = path.cgPath
-            barLayers.append(barLayer)
-            barScales.append(0.35)
-            layer?.addSublayer(barLayer)
-        }
-    }
-    
-    private func startAnimating() {
-        guard animationTimer == nil else { return }
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
-            self?.updateBars()
-        }
-    }
-    
-    private func stopAnimating() {
-        animationTimer?.invalidate()
-        animationTimer = nil
-        resetBars()
-    }
-    
-    private func updateBars() {
-        for (i, barLayer) in barLayers.enumerated() {
-            let currentScale = barScales[i]
-            let targetScale = CGFloat.random(in: 0.35 ... 1.0)
-            barScales[i] = targetScale
-            let animation = CABasicAnimation(keyPath: "transform.scale.y")
-            animation.fromValue = currentScale
-            animation.toValue = targetScale
-            animation.duration = 0.3
-            animation.autoreverses = true
-            animation.fillMode = .forwards
-            animation.isRemovedOnCompletion = false
-            if #available(macOS 13.0, *) {
-                animation.preferredFrameRateRange = CAFrameRateRange(minimum: 24, maximum: 24, preferred: 24)
-            }
-            barLayer.add(animation, forKey: "scaleY")
-        }
-    }
-    
-    private func resetBars() {
-        for (i, barLayer) in barLayers.enumerated() {
-            barLayer.removeAllAnimations()
-            barLayer.transform = CATransform3DMakeScale(1, 0.35, 1)
-            barScales[i] = 0.35
-        }
-    }
-    
-    func setPlaying(_ playing: Bool) {
-        isPlaying = playing
-        if isPlaying {
-            startAnimating()
-        } else {
-            stopAnimating()
-        }
-    }
-}
-
-struct AudioSpectrumView: NSViewRepresentable {
+/// A playback animation, not an audio spectrum or microphone recording.
+struct AudioSpectrumView: View {
     @Binding var isPlaying: Bool
-    
-    func makeNSView(context: Context) -> AudioSpectrum {
-        let spectrum = AudioSpectrum()
-        spectrum.setPlaying(isPlaying)
-        return spectrum
-    }
-    
-    func updateNSView(_ nsView: AudioSpectrum, context: Context) {
-        nsView.setPlaying(isPlaying)
-    }
-}
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Default(.gentleMotion) private var gentleMotion
 
-#Preview {
-    AudioSpectrumView(isPlaying: .constant(true))
-        .frame(width: 16, height: 20)
-        .padding()
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 24, paused: !isPlaying || reduceMotion || !gentleMotion)) { context in
+            Canvas { canvas, size in
+                let time = context.date.timeIntervalSinceReferenceDate
+                let moving = isPlaying && !reduceMotion && gentleMotion
+                let count = 5
+                let gap: CGFloat = 1.5
+                let width = max(1, (size.width - CGFloat(count - 1) * gap) / CGFloat(count))
+                for index in 0..<count {
+                    let phase = Double(index) * 1.35
+                    let wave = (sin(time * 5 + phase) + sin(time * 3.1 + phase * 0.7) + 2) / 4
+                    let height = max(2, size.height * (moving ? 0.22 + 0.78 * wave : 0.24))
+                    let rect = CGRect(x: CGFloat(index) * (width + gap), y: (size.height - height) / 2, width: width, height: height)
+                    canvas.fill(Path(roundedRect: rect, cornerRadius: width / 2), with: .color(.white))
+                }
+            }
+        }
+        .accessibilityHidden(true)
+    }
 }
