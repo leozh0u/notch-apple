@@ -22,7 +22,7 @@ The menu-bar icon opens Settings and Spotify. **Keep island open** pins the pane
 - **Focus timer:** drag a circular dial or type exact minutes and seconds, from 1 second to 12 hours. Pause, resume or end the session. It accounts for sleep and resets when the app quits. It does not block apps or websites.
 - **Upcoming calendar:** the day, date and next two events from selected macOS calendars. To include Google Calendar, add your Google account in **macOS Calendar → Add Account**, then use **Settings → Calendar → Connect Calendar**. No separate Google credentials are stored by Notch Apple.
 - **Shelf:** temporarily stage files and links, then open, drag out or share them. Drag files from Finder or use **Add files…**. Original files are not moved or deleted. Removing an item removes its shelf reference or app-owned temporary copy.
-- **Menu-bar space:** the compact panel stays attached to the top edge, below system menu windows in stacking order. There is one Home/Shelf navigation, with no duplicate Shelf shortcut.
+- **Menu-bar space:** the compact panel stays attached to the top edge using the original menu-overlay window level. There is one Home/Shelf navigation, with no duplicate Shelf shortcut. Version 0.2.1 fixes the downward shift and broken hover introduced in 0.2.0.
 
 Appearance settings can turn off the theme, new recurring animations or the focus row. Calendar, mirror and system HUD access are optional and requested when used. The new music and idle-companion animations respect Reduce Motion.
 

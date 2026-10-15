@@ -125,7 +125,7 @@ struct ContentView: View {
                             .animation(vm.notchState == .open ? openAnimation : closeAnimation, value: vm.notchState)
                             .animation(.smooth, value: gestureProgress)
                     }
-                    .contentShape(currentNotchShape)
+                    .contentShape(Rectangle())
                     .onHover { hovering in
                         handleHover(hovering)
                     }

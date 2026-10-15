@@ -36,7 +36,8 @@ class BoringNotchWindow: NSPanel {
         ]
         
         isReleasedWhenClosed = false
-        level = .floating
+        // Keep the notch at the screen edge; floating panels are constrained below the menu bar.
+        level = .mainMenu + 3
         hasShadow = false
     }
     

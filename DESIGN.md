@@ -43,7 +43,7 @@ The closed state places small artwork and five rounded playback bars on opposite
 
 The notch is an opaque black surface. Its optional shadow appears while open or hovered, using black at 0.7 opacity and a radius of 6 pt with corner scaling or 4 pt without it. The artwork lighting effect uses blurred artwork (40 pt blur, 0.18 opacity while playing). Keep that effect local to the artwork and preserve the clean outer edge.
 
-Settings retains native layered surfaces. The focus footer uses one subtle top divider, white at 0.12 opacity with a height of 0.5 pt. Both window implementations use the `.floating` level so system menus can appear above the island.
+Settings retains native layered surfaces. The focus footer uses one subtle top divider, white at 0.12 opacity with a height of 0.5 pt. Both window implementations use the `.mainMenu + 3` level so system menus can appear above the island.
 
 ## Shapes
 
@@ -88,3 +88,7 @@ Retain the inherited opening spring (response 0.42, damping fraction 0.8), closi
 - Don't detach the notch from the screen edge or add a gap, stem, cutout or top spacer.
 - Don't describe the animated bars as measured audio or microphone input.
 - Don't claim all inherited motion or assistive-technology flows have been verified from screenshots alone.
+
+## Native placement regression check
+
+Version 0.2.1 restores the original `.mainMenu + 3` panel level and rectangular hover content shape. On this Mac, lowering the panel to `.floating` displaced the closed notch below the menu bar and broke normal hover. Keep the painted `NotchShape` unchanged. Verify closed placement and hover on the actual desktop; a cropped app capture cannot establish alignment with the screen edge. Leo confirmed the repaired build is flush and opens normally on 15 October 2026.
