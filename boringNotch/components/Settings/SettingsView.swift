@@ -648,34 +648,46 @@ struct Media: View {
             }
             
             Section {
-                if spotifyLibrary.isConnected {
-                    Label("Spotify connected", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                    Button("Disconnect Spotify", role: .destructive) {
-                        spotifyLibrary.disconnect()
-                    }
-                } else {
-                    TextField("Spotify Client ID", text: $spotifyClientID)
-                        .textFieldStyle(.roundedBorder)
-                        .autocorrectionDisabled()
-                        .onSubmit(connectSpotify)
+                if spotifyLibrary.isConnecting {
                     HStack {
-                        if spotifyLibrary.isConnecting {
-                            ProgressView().controlSize(.small)
-                            Text(spotifyLibrary.connectionPhase?.title ?? "Connecting Spotify…")
-                            if spotifyLibrary.connectionPhase == .browser {
-                                Button("Continue in browser", action: spotifyLibrary.resumeSignIn)
-                            }
-                            Button("Cancel", action: spotifyLibrary.cancelConnection)
-                        } else {
-                            Button("Connect Spotify", action: connectSpotify)
-                                .disabled(spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        ProgressView().controlSize(.small)
+                        Text(spotifyLibrary.connectionPhase?.title ?? "Connecting Spotify…")
+                        if spotifyLibrary.connectionPhase == .browser {
+                            Button("Continue in browser", action: spotifyLibrary.resumeSignIn)
                         }
+                        Button("Cancel", action: spotifyLibrary.cancelConnection)
                     }
                     if spotifyLibrary.connectionPhase == .browser {
                         Text("Finish signing in to Spotify in your browser, then choose Agree.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
+                } else if spotifyLibrary.isConnected {
+                    Label("Spotify connected", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    if !spotifyLibrary.hasPlaybackAccess {
+                        Button("Enable background playback", action: connectSpotify)
+                        Text("Allow Spotify playback control to choose songs without opening its window.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Button("Disconnect Spotify", role: .destructive) { spotifyLibrary.disconnect() }
+                } else {
+                    TextField("Spotify Client ID", text: $spotifyClientID)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                        .onSubmit(connectSpotify)
+                    Button("Connect Spotify", action: connectSpotify)
+                        .disabled(spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                if spotifyLibrary.isConnected && spotifyLibrary.hasPlaybackAccess {
+                    Picker("Playback device", selection: $spotifyLibrary.preferredPlaybackDeviceID) {
+                        Text("Automatically find this Mac").tag("")
+                        ForEach(spotifyLibrary.playbackDevices, id: \.id) { device in
+                            Text(device.name).tag(device.id ?? "")
+                        }
+                    }
+                    Button("Refresh playback devices") { Task { await spotifyLibrary.refreshPlaybackDevices() } }
+                    Text("Choose this Mac if Spotify uses a different device name.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 if let error = spotifyLibrary.errorMessage {
                     Text(error).font(.caption).foregroundStyle(.secondary)
@@ -750,6 +762,7 @@ struct Media: View {
         .accentColor(.effectiveAccent)
         .navigationTitle("Media")
         .onAppear { spotifyClientID = spotifyLibrary.clientID }
+        .task { if spotifyLibrary.hasPlaybackAccess { await spotifyLibrary.refreshPlaybackDevices() } }
         .onChange(of: spotifyLibrary.isConnected) { _, connected in
             if connected { mediaController = .spotify }
         }

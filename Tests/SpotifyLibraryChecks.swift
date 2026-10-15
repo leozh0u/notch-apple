@@ -19,8 +19,10 @@ struct SpotifyLibraryChecks {
         let authorizationItems = URLComponents(url: authorization, resolvingAgainstBaseURL: false)!.queryItems!
         check(authorization.scheme == "https" && authorization.host == "accounts.spotify.com", "Fixed authorize origin")
         let requestedScopes = Set((authorizationItems.first(where: { $0.name == "scope" })?.value ?? "").split(separator: " ").map(String.init))
-        check(requestedScopes == ["user-library-read", "playlist-read-private", "playlist-read-collaborative"], "Read-only library scopes")
+        check(requestedScopes == ["user-library-read", "playlist-read-private", "playlist-read-collaborative", "user-read-playback-state", "user-modify-playback-state"], "Library and background playback scopes")
         check(!SpotifyAuthorization.hasRequiredScopes("user-library-read"), "Old album-only credentials require reconnect")
+        check(!SpotifyAuthorization.hasPlaybackScopes("user-library-read playlist-read-private playlist-read-collaborative"), "Existing library grant needs explicit playback upgrade")
+        check(SpotifyAuthorization.hasRequiredScopes("user-library-read playlist-read-private playlist-read-collaborative"), "Existing library grant stays usable")
         check(!SpotifyAuthorization.hasRequiredScopes(nil), "Legacy credentials require reconnect once")
         check(SpotifyAuthorization.hasRequiredScopes(SpotifyAuthorization.scope), "Full new read-only grants accepted")
         check(authorizationItems.first(where: { $0.name == "redirect_uri" })?.value == SpotifyAuthorization.redirectURI, "Loopback callback")

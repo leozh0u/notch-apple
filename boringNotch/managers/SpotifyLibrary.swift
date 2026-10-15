@@ -29,6 +29,13 @@ final class SpotifyLibrary: ObservableObject {
     @Published private(set) var hasPreviousPlaylists = false
     @Published private(set) var hasPreviousTracks = false
 
+    @Published private(set) var playbackDevices: [SpotifyPlaybackDevice] = []
+    @Published var preferredPlaybackDeviceID = UserDefaults.standard.string(forKey: "spotifyPlaybackDeviceID") ?? "" {
+        didSet { UserDefaults.standard.set(preferredPlaybackDeviceID, forKey: "spotifyPlaybackDeviceID") }
+    }
+    var playbackAccountID: UUID { accountGeneration }
+    var hasPlaybackAccess: Bool { SpotifyAuthorization.hasPlaybackScopes(credentials?.scope) }
+
     // Raw source ranges include unavailable entries that the UI omits.
     var albumPageEndOffset: Int { nextAlbumOffset }
     var playlistPageEndOffset: Int { nextPlaylistOffset }
@@ -220,6 +227,8 @@ final class SpotifyLibrary: ObservableObject {
         session.invalidateAndCancel()
         session = Self.makeSession()
         credentials = nil
+        playbackDevices = []
+        preferredPlaybackDeviceID = ""
         albums = []
         tracks = []
         playlists = []
@@ -502,7 +511,56 @@ final class SpotifyLibrary: ObservableObject {
                                   expiresAt: Date().addingTimeInterval(TimeInterval(token.expires_in)), scope: scope)
     }
 
-    private func api<T: Decodable>(path: String, query: [URLQueryItem], retried: Bool = false) async throws -> T {
+    func refreshPlaybackDevices() async {
+        let generation = accountGeneration
+        do { try await fetchPlaybackDevices() }
+        catch {
+            guard accountGeneration == generation, !(error is CancellationError),
+                  (error as? URLError)?.code != .cancelled else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func fetchPlaybackDevices() async throws {
+        guard hasPlaybackAccess else {
+            throw SpotifyLibraryError.message("Enable background playback in Settings → Media to play without opening Spotify.")
+        }
+        let generation = accountGeneration
+        let response: SpotifyDevicesResponse = try await api(path: "/v1/me/player/devices", query: [])
+        try Task.checkCancellation()
+        guard accountGeneration == generation else { throw CancellationError() }
+        playbackDevices = response.devices.filter(\.isUsableComputer)
+    }
+
+    func playOnThisMac(_ request: SpotifyPlaybackRequest) async throws {
+        let generation = accountGeneration
+        let names = [Host.current().localizedName, Host.current().name, ProcessInfo.processInfo.hostName].compactMap { $0 }
+        for attempt in 0..<4 {
+            try Task.checkCancellation()
+            guard accountGeneration == generation else { throw CancellationError() }
+            try await fetchPlaybackDevices()
+            try Task.checkCancellation()
+            guard accountGeneration == generation else { throw CancellationError() }
+            if let device = SpotifyPlaybackDevice.thisMac(in: playbackDevices, preferredID: preferredPlaybackDeviceID, hostNames: names),
+               let id = device.id {
+                _ = try await authorizedRequest(path: "/v1/me/player/play", query: [URLQueryItem(name: "device_id", value: id)],
+                                                method: "PUT", body: try request.playbackBody)
+                return
+            }
+            // A freshly launched client may take a moment to register with Connect.
+            if !playbackDevices.isEmpty || attempt == 3 { break }
+            try await Task.sleep(for: .milliseconds(500))
+        }
+        throw SpotifyLibraryError.message("Choose this Mac under Settings → Media → Playback device, then try again.")
+    }
+
+    private func api<T: Decodable>(path: String, query: [URLQueryItem]) async throws -> T {
+        let data = try await authorizedRequest(path: path, query: query)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    private func authorizedRequest(path: String, query: [URLQueryItem] = [], method: String = "GET",
+                                   body: Data? = nil, retried: Bool = false) async throws -> Data {
         if let cooldownUntil, cooldownUntil > Date() {
             throw SpotifyLibraryError.message("Spotify is limiting requests. Try again in \(Int(ceil(cooldownUntil.timeIntervalSinceNow))) seconds.")
         }
@@ -513,14 +571,21 @@ final class SpotifyLibrary: ObservableObject {
         components.path = path
         components.queryItems = query
         var request = URLRequest(url: components.url!)
+        request.httpMethod = method
+        request.httpBody = body
+        if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await session.data(for: request)
         guard accountGeneration == generation else { throw CancellationError() }
         guard let http = response as? HTTPURLResponse else { throw SpotifyLibraryError.message("Spotify returned an unreadable response.") }
-        if http.statusCode == 401 && !retried { return try await api(path: path, query: query, retried: true) }
-        guard http.statusCode == 200 else {
+        if http.statusCode == 401 && !retried { return try await authorizedRequest(path: path, query: query, method: method, body: body, retried: true) }
+        guard http.statusCode == (method == "GET" ? 200 : 204) else {
             if http.statusCode == 429 { throw rateLimitError(http) }
             if http.statusCode == 401 { throw SpotifyLibraryError.message("Spotify authorization expired. Disconnect and connect again.") }
+            if path.hasPrefix("/v1/me/player") {
+                if http.statusCode == 404 { throw SpotifyLibraryError.message("Spotify on this Mac is not ready yet. Try playing again.") }
+                if http.statusCode == 403 { throw SpotifyLibraryError.message("Background playback needs Spotify Premium and playback permission. Reconnect in Settings → Media.") }
+            }
             if http.statusCode == 403 {
                 if path.hasPrefix("/v1/playlists/") {
                     throw SpotifyLibraryError.message("Spotify only allows browsing tracks in playlists you own or collaborate on.")
@@ -530,7 +595,7 @@ final class SpotifyLibrary: ObservableObject {
             throw SpotifyLibraryError.message("Spotify could not load your Spotify library. Try again later.")
         }
         guard data.count <= 2_000_000 else { throw SpotifyLibraryError.message("Spotify returned too much data. Try a narrower search.") }
-        return try JSONDecoder().decode(T.self, from: data)
+        return data
     }
 
     private func rateLimitError(_ response: HTTPURLResponse) -> SpotifyLibraryError {
@@ -540,6 +605,7 @@ final class SpotifyLibrary: ObservableObject {
     }
 }
 
+private struct SpotifyDevicesResponse: Decodable { let devices: [SpotifyPlaybackDevice] }
 private struct SpotifyPage<Item: Decodable>: Decodable { let items: [Item]; let total: Int }
 private struct SpotifySavedAlbum: Decodable { let album: SpotifyAlbum }
 private struct SpotifySearchPage: Decodable { let albums: SpotifyPage<SpotifyAlbum> }

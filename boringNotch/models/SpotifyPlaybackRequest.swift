@@ -19,21 +19,44 @@ struct SpotifyPlaybackRequest {
             }
     }
 
-    func makeEvent() -> NSAppleEventDescriptor {
-        let event = SpotifyPlaybackTransport.makeEvent(command: "PCtx")
-        event.setParam(NSAppleEventDescriptor(string: uri), forKeyword: SpotifyPlaybackTransport.code("----"))
-        if let context {
-            event.setParam(NSAppleEventDescriptor(string: context), forKeyword: SpotifyPlaybackTransport.code("cotx"))
+    var playbackBody: Data {
+        get throws {
+            let body: [String: Any]
+            if uri.hasPrefix("spotify:track:") {
+                if let context {
+                    body = ["context_uri": context, "offset": ["uri": uri], "position_ms": 0]
+                } else {
+                    body = ["uris": [uri], "position_ms": 0]
+                }
+            } else {
+                body = ["context_uri": uri, "position_ms": 0]
+            }
+            return try JSONSerialization.data(withJSONObject: body, options: .sortedKeys)
         }
-        return event
-    }
-
-    func playInBackground() async throws {
-        try await SpotifyPlaybackTransport.send(command: "PCtx", uri: uri, context: context)
     }
 }
 
-/// Direct scripting events avoid AppleScript's application activation behavior.
+struct SpotifyPlaybackDevice: Decodable {
+    let id: String?
+    let name: String
+    let type: String
+    let is_restricted: Bool
+
+    var isUsableComputer: Bool {
+        type.lowercased() == "computer" && !is_restricted && id?.isEmpty == false
+    }
+
+    static func thisMac(in devices: [Self], preferredID: String, hostNames: [String]) -> Self? {
+        let usable = devices.filter(\.isUsableComputer)
+        if !preferredID.isEmpty { return usable.first { $0.id == preferredID } }
+        let names = Set(hostNames.map { $0.precomposedStringWithCanonicalMapping.lowercased() })
+        let matches = usable.filter { names.contains($0.name.precomposedStringWithCanonicalMapping.lowercased()) }
+        return matches.count == 1 ? matches.first : nil
+    }
+}
+
+/// Resume/pause/skip use noninteractive local events; selecting music uses the Web API.
+/// Spotify's local PCtx command may activate its window despite the event flags.
 /// The codes come from Spotify.app's published Spotify.sdef dictionary.
 enum SpotifyPlaybackTransport {
     static let sendOptions: NSAppleEventDescriptor.SendOptions = [.waitForReply, .neverInteract]
@@ -53,13 +76,11 @@ enum SpotifyPlaybackTransport {
         )
     }
 
-    static func send(command: String, uri: String? = nil, context: String? = nil) async throws {
+    static func send(command: String) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             queue.async {
                 do {
                     let event = makeEvent(command: command)
-                    if let uri { event.setParam(NSAppleEventDescriptor(string: uri), forKeyword: code("----")) }
-                    if let context { event.setParam(NSAppleEventDescriptor(string: context), forKeyword: code("cotx")) }
                     let reply = try event.sendEvent(options: sendOptions, timeout: timeout)
                     if let error = reply.paramDescriptor(forKeyword: code("errn")), error.int32Value != 0 {
                         throw NSError(domain: NSOSStatusErrorDomain, code: Int(error.int32Value))

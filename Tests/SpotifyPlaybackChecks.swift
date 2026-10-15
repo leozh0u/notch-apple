@@ -6,12 +6,16 @@ import Foundation
         let album = "spotify:album:abcdefghijklmnopqrstuv"
         let request = SpotifyPlaybackRequest(uri: track, context: album)!
 
-        let event = request.makeEvent()
-        assert(event.eventClass == 0x73706679) // spfy from Spotify.sdef
-        assert(event.eventID == 0x50437478) // PCtx from Spotify.sdef
-        assert(event.paramDescriptor(forKeyword: SpotifyPlaybackTransport.code("----"))?.stringValue == track)
-        assert(event.paramDescriptor(forKeyword: SpotifyPlaybackTransport.code("cotx"))?.stringValue == album)
-        assert(SpotifyPlaybackRequest(uri: album)!.makeEvent().paramDescriptor(forKeyword: SpotifyPlaybackTransport.code("cotx")) == nil)
+        let body = try! JSONSerialization.jsonObject(with: request.playbackBody) as! [String: Any]
+        assert(body["context_uri"] as? String == album)
+        assert((body["offset"] as? [String: String])?["uri"] == track)
+        assert(body["uris"] == nil)
+        let single = try! JSONSerialization.jsonObject(with: SpotifyPlaybackRequest(uri: track)!.playbackBody) as! [String: Any]
+        assert(single["uris"] as? [String] == [track] && single["context_uri"] == nil)
+        let collection = try! JSONSerialization.jsonObject(with: SpotifyPlaybackRequest(uri: album)!.playbackBody) as! [String: Any]
+        assert(collection["context_uri"] as? String == album && collection["offset"] == nil)
+        let event = SpotifyPlaybackTransport.makeEvent(command: "Play")
+        assert(event.eventClass == 0x73706679)
         assert(SpotifyPlaybackTransport.sendOptions.contains(.waitForReply))
         assert(SpotifyPlaybackTransport.sendOptions.contains(.neverInteract))
         assert(!SpotifyPlaybackTransport.sendOptions.contains(.canSwitchLayer))
@@ -29,6 +33,20 @@ import Foundation
             assert(SpotifyPlaybackRequest(uri: uri) == nil, uri)
         }
         assert(SpotifyPlaybackRequest(uri: track, context: track) == nil)
-        print("Spotify playback checks passed: URI types, IDs, album context, injection rejection, event codes/parameters, and bounded noninteractive transport (no live sends).")
+        func device(_ id: String?, _ name: String, type: String = "computer", restricted: Bool = false) -> SpotifyPlaybackDevice {
+            SpotifyPlaybackDevice(id: id, name: name, type: type, is_restricted: restricted)
+        }
+        let mac = device("mac", "My Mac")
+        let other = device("other", "Other computer")
+        let phone = device("phone", "My Mac", type: "smartphone")
+        let restricted = device("restricted", "My Mac", restricted: true)
+        let noID = device(nil, "My Mac")
+        assert(SpotifyPlaybackDevice.thisMac(in: [other, phone, restricted, noID, mac], preferredID: "", hostNames: ["my mac"])?.id == "mac")
+        assert(SpotifyPlaybackDevice.thisMac(in: [other], preferredID: "", hostNames: ["My Mac"]) == nil, "Never fall back to an unrelated active computer")
+        assert(SpotifyPlaybackDevice.thisMac(in: [mac, device("duplicate", "My Mac")], preferredID: "", hostNames: ["My Mac"]) == nil, "Ambiguous names require explicit selection")
+        assert(SpotifyPlaybackDevice.thisMac(in: [mac], preferredID: "stale", hostNames: ["My Mac"]) == nil, "Stale selection cannot redirect playback")
+        assert(SpotifyPlaybackDevice.thisMac(in: [phone], preferredID: "phone", hostNames: []) == nil, "Phone is never a Mac fallback")
+        assert(SpotifyPlaybackDevice.thisMac(in: [other], preferredID: "other", hostNames: [])?.id == "other", "Explicit computer override supported")
+        print("Spotify playback checks passed: URI/body validation, album context, explicit Mac device selection, ambiguity/stale-device rejection, and bounded pause/resume transport (no live sends).")
     }
 }

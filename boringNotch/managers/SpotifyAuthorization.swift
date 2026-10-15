@@ -33,7 +33,11 @@ enum SpotifyAuthorization {
     static let redirectURI = "http://127.0.0.1:8898/callback"
     static let maximumHeaderBytes = 8192
     static let requiredScopes: Set<String> = ["user-library-read", "playlist-read-private", "playlist-read-collaborative"]
-    static var scope: String { requiredScopes.sorted().joined(separator: " ") }
+    static let playbackScopes: Set<String> = ["user-read-playback-state", "user-modify-playback-state"]
+    static var scope: String { requiredScopes.union(playbackScopes).sorted().joined(separator: " ") }
+    static func hasPlaybackScopes(_ value: String?) -> Bool {
+        playbackScopes.isSubset(of: Set((value ?? "").split(separator: " ").map(String.init)))
+    }
     static func hasRequiredScopes(_ value: String?) -> Bool {
         requiredScopes.isSubset(of: Set((value ?? "").split(separator: " ").map(String.init)))
     }

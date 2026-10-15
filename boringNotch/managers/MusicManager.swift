@@ -17,6 +17,7 @@ class MusicManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var controllerCancellables = Set<AnyCancellable>()
     private var controllerSelectionTask: Task<Void, Never>?
+    private var spotifySelectionTask: Task<Void, Never>?
     @Published var appLaunchError: String?
     private var debounceIdleTask: Task<Void, Never>?
 
@@ -683,16 +684,22 @@ class MusicManager: ObservableObject {
             appLaunchError = "That Spotify item cannot be played."
             return
         }
-        Task { @MainActor in
+        spotifySelectionTask?.cancel()
+        spotifySelectionTask = Task { @MainActor in
             do {
+                let accountID = SpotifyLibrary.shared.playbackAccountID
                 Defaults[.mediaController] = .spotify
                 let spotify = try await ensureSpotifyHidden()
                 defer { spotify.hide() }
-                try await request.playInBackground()
+                try Task.checkCancellation()
+                guard SpotifyLibrary.shared.playbackAccountID == accountID else { throw CancellationError() }
+                try await SpotifyLibrary.shared.playOnThisMac(request)
                 appLaunchError = nil
                 forceUpdate()
+            } catch is CancellationError {
+            } catch let error as URLError where error.code == .cancelled {
             } catch {
-                appLaunchError = "Could not play Spotify. Allow control in System Settings → Privacy & Security → Automation, then try again."
+                appLaunchError = error is URLError ? "Spotify could not be reached. Check your connection and try again." : error.localizedDescription
             }
         }
     }
