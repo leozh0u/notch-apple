@@ -21,8 +21,6 @@ struct ContentView: View {
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @ObservedObject var musicManager = MusicManager.shared
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
-    @ObservedObject var brightnessManager = BrightnessManager.shared
-    @ObservedObject var volumeManager = VolumeManager.shared
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
@@ -105,7 +103,7 @@ struct ContentView: View {
                     .overlay(alignment: .top) {
                         Rectangle()
                             .fill(.black)
-                            .frame(height: 1)
+                            .frame(width: vm.notchState == .open ? vm.closedNotchSize.width : nil, height: 1)
                             .padding(.horizontal, topCornerRadius)
                     }
                     .shadow(
@@ -127,7 +125,7 @@ struct ContentView: View {
                             .animation(vm.notchState == .open ? openAnimation : closeAnimation, value: vm.notchState)
                             .animation(.smooth, value: gestureProgress)
                     }
-                    .contentShape(Rectangle())
+                    .contentShape(currentNotchShape)
                     .onHover { hovering in
                         handleHover(hovering)
                     }
@@ -147,7 +145,7 @@ struct ContentView: View {
                             }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: .sharingDidFinish)) { _ in
-                        if vm.notchState == .open && !isHovering && !vm.isBatteryPopoverActive {
+                        if vm.notchState == .open && !isHovering && !vm.isBatteryPopoverActive && !vm.isFocusEditorPresented {
                             hoverTask?.cancel()
                             hoverTask = Task {
                                 try? await Task.sleep(for: .milliseconds(100))
@@ -168,7 +166,7 @@ struct ContentView: View {
                         }
                     }
                     .onChange(of: vm.isBatteryPopoverActive) {
-                        if !vm.isBatteryPopoverActive && !isHovering && vm.notchState == .open && !SharingStateManager.shared.preventNotchClose {
+                        if !vm.isBatteryPopoverActive && !vm.isFocusEditorPresented && !isHovering && vm.notchState == .open && !SharingStateManager.shared.preventNotchClose {
                             hoverTask?.cancel()
                             hoverTask = Task {
                                 try? await Task.sleep(for: .milliseconds(100))
@@ -212,6 +210,10 @@ struct ContentView: View {
         )
         .animation(.smooth, value: gestureProgress)
         .background(dragDetector)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("notchAppleFocusStarted"))) { _ in
+            coordinator.isIslandPinned = false
+            vm.close()
+        }
         .preferredColorScheme(.dark)
         .environmentObject(vm)
         .onChange(of: vm.anyDropZoneTargeting) { _, isTargeted in
@@ -293,8 +295,7 @@ struct ContentView: View {
                       } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
                           BoringFaceAnimation()
                        } else if vm.notchState == .open {
-                           BoringHeader()
-                               .frame(height: max(24, vm.effectiveClosedNotchHeight))
+                           BoringHeader().frame(height: 28)
                                .opacity(gestureProgress != 0 ? 1.0 - min(abs(gestureProgress) * 0.1, 0.3) : 1.0)
                        } else {
                            Rectangle().fill(.clear).frame(width: vm.closedNotchSize.width - 20, height: vm.effectiveClosedNotchHeight)
@@ -643,11 +644,16 @@ struct GeneralDropTargetDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        return DropProposal(operation: .cancel)
+        return ShelfSelectionModel.shared.isDragging ? DropProposal(operation: .cancel) : DropProposal(operation: .copy)
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        return false
+        isTargeted = false
+        guard !ShelfSelectionModel.shared.isDragging else { return false }
+        let providers = info.itemProviders(for: [.fileURL, .url, .utf8PlainText, .plainText, .data])
+        guard !providers.isEmpty else { return false }
+        ShelfStateViewModel.shared.load(providers)
+        return true
     }
 }
 

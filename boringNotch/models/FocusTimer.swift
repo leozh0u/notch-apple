@@ -30,7 +30,17 @@ struct FocusCountdown {
     }
 
     mutating func reset(minutes: Int? = nil) {
-        if let minutes, minutes > 0 { duration = TimeInterval(minutes * 60) }
+        if let minutes, (1...720).contains(minutes) {
+            reset(seconds: minutes * 60)
+            return
+        }
+        remaining = duration
+        deadline = nil
+    }
+
+    mutating func reset(seconds: Int) {
+        guard (1...43_200).contains(seconds) else { return }
+        duration = TimeInterval(seconds)
         remaining = duration
         deadline = nil
     }
@@ -65,6 +75,12 @@ final class FocusTimer: ObservableObject {
     func reset(minutes: Int? = nil) {
         stopTicker()
         countdown.reset(minutes: minutes)
+    }
+
+    func reset(seconds: Int) {
+        guard (1...43_200).contains(seconds) else { return }
+        stopTicker()
+        countdown.reset(seconds: seconds)
     }
 
     private func update() {

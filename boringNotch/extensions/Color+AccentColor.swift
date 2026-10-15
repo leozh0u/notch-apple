@@ -15,7 +15,7 @@ extension Color {
            let nsColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: colorData) {
             return Color(nsColor: nsColor)
         }
-        return .accentColor
+        return Defaults[.enchantedTheme] ? Color(red: 1, green: 0.79, blue: 0.31) : .accentColor
     }
     
     /// Returns a darker version of the accent color suitable for backgrounds
@@ -36,7 +36,7 @@ extension NSColor {
            let nsColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: colorData) {
             return nsColor
         }
-        return NSColor.controlAccentColor
+        return Defaults[.enchantedTheme] ? NSColor(calibratedRed: 1, green: 0.79, blue: 0.31, alpha: 1) : NSColor.controlAccentColor
     }
     
     /// Returns a darker version of the accent color as NSColor suitable for backgrounds

@@ -16,13 +16,12 @@ func render(size: Int, to url: URL) throws {
         color.setFill()
         NSBezierPath(roundedRect: NSRect(x: x, y: y, width: w, height: h), xRadius: radius, yRadius: radius).fill()
     }
-    rect(64, 64, 896, 896, 200, NSColor(calibratedRed: 0.93, green: 0.94, blue: 0.92, alpha: 1))
-    rect(168, 398, 688, 244, 85, .black)
-    rect(210, 442, 156, 156, 40, NSColor(calibratedRed: 0.70, green: 0.88, blue: 0.45, alpha: 1))
-    let heights: [CGFloat] = [48, 96, 140, 86, 54]
-    for (i, height) in heights.enumerated() {
-        rect(648 + CGFloat(i) * 26, 520 - height / 2, 13, height, 6.5, .white)
+    rect(64, 64, 896, 896, 200, NSColor(calibratedWhite: 0.055, alpha: 1))
+    guard let apple = NSImage(contentsOf: root.appendingPathComponent("design/enchanted-golden-apple.png")) else {
+        fatalError("Missing enchanted golden apple artwork")
     }
+    NSGraphicsContext.current?.imageInterpolation = .none
+    apple.draw(in: NSRect(x: 104, y: 104, width: 816, height: 816), from: .zero, operation: .sourceOver, fraction: 1)
     NSGraphicsContext.restoreGraphicsState()
     try bitmap.representation(using: .png, properties: [:])!.write(to: url)
 }

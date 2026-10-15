@@ -9,16 +9,15 @@ import Combine
 import Defaults
 import SwiftUI
 
-let defaultImage: NSImage = .init(
-    systemSymbolName: "heart.fill",
-    accessibilityDescription: "Album Art"
-)!
+let defaultImage: NSImage = NSImage(named: "NotchAppleMark") ?? NSImage(systemSymbolName: "music.note", accessibilityDescription: "Album art")!
 
 class MusicManager: ObservableObject {
     // MARK: - Properties
     static let shared = MusicManager()
     private var cancellables = Set<AnyCancellable>()
     private var controllerCancellables = Set<AnyCancellable>()
+    private var controllerSelectionTask: Task<Void, Never>?
+    @Published var appLaunchError: String?
     private var debounceIdleTask: Task<Void, Never>?
 
     // Helper to check if macOS has removed support for NowPlayingController
@@ -33,7 +32,7 @@ class MusicManager: ObservableObject {
     @Published var artistName: String = "Choose a track to get started"
     @Published var albumArt: NSImage = defaultImage
     @Published var isPlaying = false
-    @Published var album: String = "Self Love"
+    @Published var album: String = ""
     @Published var isPlayerIdle: Bool = true
     @Published var animations: BoringAnimations = .init()
     @Published var avgColor: NSColor = .white
@@ -77,18 +76,9 @@ class MusicManager: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Initialize deprecation check asynchronously
-        Task { @MainActor in
-            do {
-                self.isNowPlayingDeprecated = try await self.mediaChecker.checkDeprecationStatus()
-                print("Deprecation check completed: \(self.isNowPlayingDeprecated)")
-            } catch {
-                print("Failed to check deprecation status: \(error). Defaulting to false.")
-                self.isNowPlayingDeprecated = false
-            }
-            
-            // Initialize the active controller after deprecation check
-            self.setActiveControllerBasedOnPreference()
+        setActiveControllerBasedOnPreference()
+        if Defaults[.mediaController] == .spotify && Defaults[.launchSpotifyOnStartup] {
+            openSpotify()
         }
     }
 
@@ -98,6 +88,7 @@ class MusicManager: ObservableObject {
     
     public func destroy() {
         debounceIdleTask?.cancel()
+        controllerSelectionTask?.cancel()
         cancellables.removeAll()
         controllerCancellables.removeAll()
         flipWorkItem?.cancel()
@@ -149,19 +140,25 @@ class MusicManager: ObservableObject {
     }
 
     private func setActiveControllerBasedOnPreference() {
+        controllerSelectionTask?.cancel()
         let preferredType = Defaults[.mediaController]
-        print("Preferred Media Controller: \(preferredType)")
-
-        // If NowPlaying is deprecated but that's the preference, use Apple Music instead
-        let controllerType = (self.isNowPlayingDeprecated && preferredType == .nowPlaying)
-            ? .appleMusic
-            : preferredType
-
-        if let controller = createController(for: controllerType) {
-            setActiveController(controller)
-        } else if controllerType != .appleMusic, let fallbackController = createController(for: .appleMusic) {
-            // Fallback to Apple Music if preferred controller couldn't be created
-            setActiveController(fallbackController)
+        controllerSelectionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            if preferredType == .nowPlaying {
+                self.isNowPlayingDeprecated = (try? await self.mediaChecker.checkDeprecationStatus()) ?? false
+            }
+            guard !Task.isCancelled, Defaults[.mediaController] == preferredType else { return }
+            let type: MediaControllerType = self.isNowPlayingDeprecated && preferredType == .nowPlaying ? .spotify : preferredType
+            self.songTitle = "Nothing playing"
+            self.artistName = type == .spotify ? "Open Spotify to choose a track" : "Choose a track to get started"
+            self.albumArt = defaultImage
+            self.songDuration = 0
+            self.elapsedTime = 0
+            self.isPlaying = false
+            self.isPlayerIdle = true
+            if let controller = self.createController(for: type) {
+                self.setActiveController(controller)
+            }
         }
     }
 
@@ -219,13 +216,10 @@ class MusicManager: ObservableObject {
             }
             self.artworkData = state.artwork
 
-            if artworkChanged || state.artwork == nil {
-                // Update last artwork change values
-                self.lastArtworkTitle = state.title
-                self.lastArtworkArtist = state.artist
-                self.lastArtworkAlbum = state.album
-                self.lastArtworkBundleIdentifier = state.bundleIdentifier
-            }
+            self.lastArtworkTitle = state.title
+            self.lastArtworkArtist = state.artist
+            self.lastArtworkAlbum = state.album
+            self.lastArtworkBundleIdentifier = state.bundleIdentifier
 
             // Only update sneak peek if there's actual content and something changed
             if !state.title.isEmpty && !state.artist.isEmpty && state.isPlaying {
@@ -233,7 +227,9 @@ class MusicManager: ObservableObject {
             }
 
             // Fetch lyrics on content change
-            self.fetchLyricsIfAvailable(bundleIdentifier: state.bundleIdentifier, title: state.title, artist: state.artist)
+            if titleChanged || artistChanged || bundleChanged {
+                self.fetchLyricsIfAvailable(bundleIdentifier: state.bundleIdentifier, title: state.title, artist: state.artist)
+            }
         }
 
         let timeChanged = state.currentTime != self.elapsedTime
@@ -526,7 +522,7 @@ class MusicManager: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
-            if let artworkImage = NSImage(data: artworkData) {
+            if let artworkImage = NSImage.downsampledArtwork(data: artworkData) {
                 DispatchQueue.main.async { [weak self] in
                     self?.usingAppIconForArtwork = false
                     self?.updateAlbumArt(newAlbumArt: artworkImage)
@@ -593,11 +589,7 @@ class MusicManager: ObservableObject {
     }
 
     // MARK: - Public Methods for controlling playback
-    func playPause() {
-        Task {
-            await activeController?.togglePlay()
-        }
-    }
+    func playPause() { togglePlay() }
 
     func play() {
         Task {
@@ -624,8 +616,27 @@ class MusicManager: ObservableObject {
     }
     
     func togglePlay() {
-        Task {
-            await activeController?.togglePlay()
+        if Defaults[.mediaController] == .spotify && !isSpotifyRunning {
+            if Defaults[.openSpotifyOnPlay] { openSpotify() }
+            return
+        }
+        Task { await activeController?.togglePlay() }
+    }
+
+    var isSpotifyRunning: Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: "com.spotify.client").isEmpty
+    }
+
+    func openSpotify() {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.spotify.client") else {
+            appLaunchError = "Spotify is not installed. Download it from spotify.com."
+            return
+        }
+        appLaunchError = nil
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+            DispatchQueue.main.async {
+                self?.appLaunchError = error.map { "Could not open Spotify: \($0.localizedDescription)" }
+            }
         }
     }
 
@@ -659,6 +670,7 @@ class MusicManager: ObservableObject {
         }
     }
     func openMusicApp() {
+        if Defaults[.mediaController] == .spotify { openSpotify(); return }
         guard let bundleID = bundleIdentifier else {
             print("Error: appBundleIdentifier is nil")
             return

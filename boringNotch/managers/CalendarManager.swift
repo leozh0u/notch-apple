@@ -17,6 +17,7 @@ class CalendarManager: ObservableObject {
 
     @Published var currentWeekStartDate: Date
     @Published var events: [EventModel] = []
+    @Published var upcomingEvents: [EventModel] = []
     @Published var allCalendars: [CalendarModel] = []
     @Published var eventCalendars: [CalendarModel] = []
     @Published var reminderLists: [CalendarModel] = []
@@ -56,22 +57,58 @@ class CalendarManager: ObservableObject {
 
     @MainActor
     func reloadCalendarAndReminderLists() async {
+        calendarAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        reminderAuthorizationStatus = EKEventStore.authorizationStatus(for: .reminder)
         let all = await calendarService.calendars()
         self.eventCalendars = all.filter { !$0.isReminder }
         self.reminderLists = all.filter { $0.isReminder }
         self.allCalendars = all // for legacy compatibility, can be removed if not needed
         updateSelectedCalendars()
+        await updateUpcomingEvents()
+    }
+
+    // Refreshing the hover widget must never trigger the system permission prompt.
+    func refreshUpcomingEvents() async {
+        await reloadCalendarAndReminderLists()
+    }
+
+    private func updateUpcomingEvents() async {
+        guard calendarAuthorizationStatus == .fullAccess else {
+            upcomingEvents = []
+            return
+        }
+        let ids = Set(eventCalendars.map(\.id)).intersection(selectedCalendarIDs)
+        guard !ids.isEmpty else {
+            upcomingEvents = []
+            return
+        }
+        let now = Date()
+        let end = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now
+        let result = await calendarService.events(from: now, to: end, calendars: Array(ids))
+        guard ids == Set(eventCalendars.map(\.id)).intersection(selectedCalendarIDs),
+              EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return }
+        upcomingEvents = Self.nextEvents(from: result, now: now, until: end, calendarIDs: ids)
+    }
+
+    static func nextEvents(
+        from events: [EventModel], now: Date, until end: Date, calendarIDs: Set<String>
+    ) -> [EventModel] {
+        Array(events.filter {
+            !$0.type.isReminder && calendarIDs.contains($0.calendar.id)
+                && $0.end > now && $0.start < end
+        }.sorted {
+            if $0.start != $1.start { return $0.start < $1.start }
+            if $0.end != $1.end { return $0.end < $1.end }
+            return $0.id < $1.id
+        }.prefix(2))
     }
 
     func checkCalendarAuthorization() async {
         let status = EKEventStore.authorizationStatus(for: .event)
-        DispatchQueue.main.async {
-            print("📅 Current calendar authorization status: \(status)")
-            self.calendarAuthorizationStatus = status
-        }
+        calendarAuthorizationStatus = status
 
         switch status {
-        case .notDetermined:
+        case .notDetermined, .writeOnly:
             guard let granted = try? await calendarService.requestAccess(to: .event) else {
                 self.calendarAuthorizationStatus = .notDetermined
                 return
@@ -93,8 +130,6 @@ class CalendarManager: ObservableObject {
                 from: currentWeekStartDate,
                 to: Calendar.current.date(byAdding: .day, value: 1, to: currentWeekStartDate)!,
                 calendars: selectedCalendars.map { $0.id })
-        case .writeOnly:
-            NSLog("Write only")
         @unknown default:
             print("Unknown authorization status")
         }
@@ -172,6 +207,7 @@ class CalendarManager: ObservableObject {
         Defaults[.calendarSelectionState] = selectionState
         updateSelectedCalendars()
         await updateEvents()
+        await updateUpcomingEvents()
     }
 
     static func startOfDay(_ date: Date) -> Date {

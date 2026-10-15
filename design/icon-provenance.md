@@ -1,0 +1,9 @@
+# Enchanted golden apple artwork
+
+Original Notch Apple artwork generated with the built-in image tool on 15 October 2026. The source is `enchanted-golden-apple.png`; the reproducible native macOS icon packaging is `scripts/generate-icon.swift`. It is an original Minecraft-inspired illustration, not a copied game asset. No affiliation with Mojang, Microsoft or Apple.
+
+Prompt: One polished original app icon illustration for a macOS music utility called Notch Apple: an enchanted golden apple in crisp pixel art, gold/amber facets, dark stem and leaf, restrained lavender/violet enchantment shimmer and two small pixel sparkles. Clear apple silhouette at32pixels; no bite-shaped Apple Inc mark or official game logo. Single centred object with transparent padding; no background tile, scenery, words, watermark, signatures or visible branding. Genuine transparency.
+
+Exact generation prompt:
+
+> Use case: logo-brand. Create one polished original app icon illustration for a personal macOS music utility called Notch Apple. Subject: an enchanted golden apple, an affectionate Minecraft-inspired reference, drawn as crisp beautifully designed pixel art with hard square pixel edges, rich gold and amber facets, a tiny dark stem and leaf, and restrained lavender/violet enchantment shimmer along selected facets and two small pixel sparkle accents. This is an original illustration, not a copied game texture. Clear iconic apple silhouette readable at 32 pixels, no bite-shaped Apple Inc mark, no official game logo. Single object centered with generous transparent padding, square composition, apple occupies about75% of canvas. No background tile, no scenery, no words, no lettering, no watermark, no signatures, no visible branding. Preserve genuine transparency around object. Deliver a clean final pixel icon, not a presentation mockup.

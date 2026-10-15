@@ -56,3 +56,6 @@ build/
 
 # Local native UI verification captures
 .impeccable/review/
+
+# Packaged release artifacts
+/dist/

@@ -36,12 +36,12 @@ class BoringNotchWindow: NSPanel {
         ]
         
         isReleasedWhenClosed = false
-        level = .mainMenu + 3
+        level = .floating
         hasShadow = false
     }
     
     override var canBecomeKey: Bool {
-        false
+        true
     }
     
     override var canBecomeMain: Bool {

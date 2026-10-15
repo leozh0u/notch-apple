@@ -12,10 +12,26 @@ import Foundation
 import CoreImage
 import CoreGraphics
 import CoreImage.CIFilterBuiltins
+import ImageIO
 
 extension NSImage {
 
-    
+    static func downsampledArtwork(data: Data, maxPixelSize: Int = 384) -> NSImage? {
+        guard maxPixelSize > 0,
+              let source = CGImageSourceCreateWithData(data as CFData,
+                  [kCGImageSourceShouldCache: false] as CFDictionary),
+              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceShouldCacheImmediately: true,
+                  kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+              ] as CFDictionary) else {
+            return nil
+        }
+        return NSImage(cgImage: thumbnail,
+                       size: NSSize(width: thumbnail.width, height: thumbnail.height))
+    }
+
     func averageColor(completion: @escaping (NSColor?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             guard let cgImage = self.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
@@ -25,8 +41,8 @@ extension NSImage {
                 return
             }
             
-            let width = cgImage.width
-            let height = cgImage.height
+            let width = min(cgImage.width, 32)
+            let height = min(cgImage.height, 32)
             let totalPixels = width * height
             
             guard let context = CGContext(data: nil,

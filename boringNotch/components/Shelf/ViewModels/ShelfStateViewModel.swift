@@ -6,6 +6,7 @@
 
 import Foundation
 import AppKit
+import UniformTypeIdentifiers
 
 @MainActor
 final class ShelfStateViewModel: ObservableObject {
@@ -16,6 +17,7 @@ final class ShelfStateViewModel: ObservableObject {
     }
 
     @Published var isLoading: Bool = false
+    @Published var importError: String?
 
     var isEmpty: Bool { items.isEmpty }
 
@@ -79,13 +81,31 @@ final class ShelfStateViewModel: ObservableObject {
 
     func load(_ providers: [NSItemProvider]) {
         guard !providers.isEmpty else { return }
+        importError = nil
         isLoading = true
         Task { [weak self] in
             let dropped = await ShelfDropService.items(from: providers)
             await MainActor.run {
-                self?.add(dropped)
+                self?.add(dropped.items)
+                if dropped.failedCount > 0 {
+                    self?.importError = "Couldn't add \(dropped.failedCount) \(dropped.failedCount == 1 ? "item" : "items"). Try Add files to choose files directly."
+                }
                 self?.isLoading = false
             }
+        }
+    }
+
+    func chooseFiles() {
+        SharingStateManager.shared.beginInteraction()
+        defer { SharingStateManager.shared.endInteraction() }
+        let panel = NSOpenPanel()
+        panel.title = "Add files to Shelf"
+        panel.prompt = "Add"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        if panel.runModal() == .OK {
+            load(panel.urls.map { NSItemProvider(item: $0 as NSURL, typeIdentifier: UTType.fileURL.identifier) })
         }
     }
 

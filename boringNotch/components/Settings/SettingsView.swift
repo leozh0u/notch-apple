@@ -604,6 +604,9 @@ struct Media: View {
     var body: some View {
         Form {
             Section {
+                Defaults.Toggle("Open Spotify when pressing Play", key: .openSpotifyOnPlay)
+                Defaults.Toggle("Open Spotify when Notch Apple starts", key: .launchSpotifyOnStartup)
+                Button("Open Spotify") { MusicManager.shared.openSpotify() }
                 Picker("Music Source", selection: $mediaController) {
                     ForEach(availableMediaControllers) { controller in
                         Text(controller.rawValue).tag(controller)
@@ -716,9 +719,21 @@ struct CalendarSettings: View {
 
     var body: some View {
         Form {
-            Defaults.Toggle(key: .showCalendar) {
-                Text("Show calendar")
+            Section("Upcoming events") {
+                Defaults.Toggle("Show upcoming events in the island", key: .showCalendar)
+                Button("Connect Calendar") {
+                    Task {
+                        await calendarManager.checkCalendarAuthorization()
+                        if calendarManager.calendarAuthorizationStatus == .fullAccess {
+                            Defaults[.showCalendar] = true
+                        }
+                    }
+                }
+                Text("Add your Google account in macOS Calendar → Add Account. Events stay on this Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+
             Defaults.Toggle(key: .hideCompletedReminders) {
                 Text("Hide completed reminders")
             }
@@ -733,7 +748,7 @@ struct CalendarSettings: View {
             }
             Section(header: Text("Calendars")) {
                 if calendarManager.calendarAuthorizationStatus != .fullAccess {
-                    Text("Calendar access is denied. Please enable it in System Settings.")
+                    Text(calendarManager.calendarAuthorizationStatus == .notDetermined ? "Connect Calendar to choose your calendars." : "Calendar access is unavailable. Enable it in System Settings.")
                         .foregroundColor(.red)
                         .multilineTextAlignment(.center)
                         .padding()
@@ -769,7 +784,7 @@ struct CalendarSettings: View {
             }
             Section(header: Text("Reminders")) {
                 if calendarManager.reminderAuthorizationStatus != .fullAccess {
-                    Text("Reminder access is denied. Please enable it in System Settings.")
+                    Text(calendarManager.reminderAuthorizationStatus == .notDetermined ? "Reminders are not connected." : "Reminder access is unavailable. Enable it in System Settings.")
                         .foregroundColor(.red)
                         .multilineTextAlignment(.center)
                         .padding()
@@ -808,8 +823,7 @@ struct CalendarSettings: View {
         .navigationTitle("Calendar")
         .onAppear {
             Task {
-                await calendarManager.checkCalendarAuthorization()
-                await calendarManager.checkReminderAuthorization()
+                await calendarManager.refreshUpcomingEvents()
             }
         }
     }
@@ -906,7 +920,6 @@ struct About: View {
             //                openWindow(id: "onboarding")
             //            }
             //            .controlSize(.extraLarge)
-            CheckForUpdatesView(updater: updaterController.updater)
         }
         .navigationTitle("About")
     }
@@ -1178,6 +1191,7 @@ struct Appearance: View {
     var body: some View {
         Form {
             Section("Notch Apple") {
+                Defaults.Toggle("Enchanted golden apple theme", key: .enchantedTheme)
                 Defaults.Toggle("Gentle music animation", key: .gentleMotion)
                 Defaults.Toggle("Focus timer and quick controls", key: .showFocusControls)
                 Text("Music animation follows macOS Reduce Motion. The timer resets when you quit.")
@@ -1354,10 +1368,11 @@ struct Appearance: View {
                             }
 
                             Button {
+                                guard let visualizerURL = URL(string: url), visualizerURL.scheme?.lowercased() == "https", visualizerURL.host != nil else { return }
                                 let visualizer: CustomVisualizer = .init(
                                     UUID: UUID(),
                                     name: name,
-                                    url: URL(string: url)!,
+                                    url: visualizerURL,
                                     speed: speed
                                 )
 
@@ -1370,6 +1385,7 @@ struct Appearance: View {
                                 Text("Add")
                                     .frame(maxWidth: .infinity, alignment: .center)
                             }
+                            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || URL(string: url)?.scheme?.lowercased() != "https" || URL(string: url)?.host == nil)
                             .buttonStyle(BorderedProminentButtonStyle())
                         }
                     }

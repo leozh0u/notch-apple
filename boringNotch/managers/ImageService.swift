@@ -19,8 +19,8 @@ public final class ImageService: ImageServiceProtocol {
 
     private init() {
         let config = URLSessionConfiguration.default
-        let cache = URLCache(memoryCapacity: 50 * 1024 * 1024, // 50MB
-                             diskCapacity: 100 * 1024 * 1024, // 100MB
+        let cache = URLCache(memoryCapacity: 4 * 1024 * 1024,
+                             diskCapacity: 16 * 1024 * 1024,
                              diskPath: "artwork_cache")
         config.urlCache = cache
         config.timeoutIntervalForRequest = 15
@@ -28,13 +28,13 @@ public final class ImageService: ImageServiceProtocol {
         config.httpShouldSetCookies = false
         self.session = URLSession(configuration: config)
 
-        performLegacyCacheCleanupIfNeeded()
+        performLegacyCacheCleanupIfNeeded(cache: cache)
     }
 
-    private func performLegacyCacheCleanupIfNeeded() {
+    private func performLegacyCacheCleanupIfNeeded(cache: URLCache) {
 
         if !Defaults[.didClearLegacyURLCacheV1] {
-            URLCache.shared.removeAllCachedResponses()
+            cache.removeAllCachedResponses()
             Defaults[.didClearLegacyURLCacheV1] = true
         }
     }

@@ -94,6 +94,9 @@ extension Defaults.Keys {
     static let showOnLockScreen = Key<Bool>("showOnLockScreen", default: false)
     static let hideFromScreenRecording = Key<Bool>("hideFromScreenRecording", default: false)
     
+    static let enchantedTheme = Key<Bool>("enchantedTheme", default: true)
+    static let openSpotifyOnPlay = Key<Bool>("openSpotifyOnPlay", default: true)
+    static let launchSpotifyOnStartup = Key<Bool>("launchSpotifyOnStartup", default: false)
     static let gentleMotion = Key<Bool>("gentleMotion", default: true)
     static let showFocusControls = Key<Bool>("showFocusControls", default: true)
 
@@ -143,7 +146,7 @@ extension Defaults.Keys {
     
     // MARK: Battery
     static let showPowerStatusNotifications = Key<Bool>("showPowerStatusNotifications", default: true)
-    static let showBatteryIndicator = Key<Bool>("showBatteryIndicator", default: true)
+    static let showBatteryIndicator = Key<Bool>("showBatteryIndicator", default: false)
     static let showBatteryPercentage = Key<Bool>("showBatteryPercentage", default: true)
     static let showPowerStatusIcons = Key<Bool>("showPowerStatusIcons", default: true)
     
@@ -193,13 +196,7 @@ extension Defaults.Keys {
     static let hideTitleBar = Key<Bool>("hideTitleBar", default: true)
     
     // Helper to determine the default media controller based on NowPlaying deprecation status
-    static var defaultMediaController: MediaControllerType {
-        if MusicManager.shared.isNowPlayingDeprecated {
-            return .appleMusic
-        } else {
-            return .nowPlaying
-        }
-    }
+    static var defaultMediaController: MediaControllerType { .spotify }
 
     static let didClearLegacyURLCacheV1 = Key<Bool>("didClearLegacyURLCache_v1", default: false)
 }

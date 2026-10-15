@@ -18,6 +18,7 @@ struct DynamicNotchApp: App {
     @Default(.menubarIcon) var showMenuBarIcon
     @Environment(\.openWindow) var openWindow
     @ObservedObject private var coordinator = BoringViewCoordinator.shared
+    @ObservedObject private var focusTimer = FocusTimer.shared
 
     let updaterController: SPUStandardUpdaterController
 
@@ -30,7 +31,14 @@ struct DynamicNotchApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra("Notch Apple", systemImage: "sparkle", isInserted: $showMenuBarIcon) {
+        MenuBarExtra("Notch Apple", systemImage: focusTimer.countdown.isRunning ? "timer" : "sparkle", isInserted: $showMenuBarIcon) {
+            Button("Open Spotify") { MusicManager.shared.openSpotify() }
+            if focusTimer.countdown.isRunning {
+                Text("Focus · \(focusTimer.displayTime)").monospacedDigit()
+                Button("Pause focus timer") { focusTimer.toggle() }
+                Button("End focus session") { focusTimer.reset() }
+            }
+            Divider()
             Toggle("Keep island open", isOn: Binding(
                 get: { coordinator.isIslandPinned },
                 set: { appDelegate.setIslandPinned($0) }

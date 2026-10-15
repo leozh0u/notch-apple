@@ -68,6 +68,9 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     private var process: Process?
     private var pipeHandler: JSONLinesPipeHandler?
     private var streamTask: Task<Void, Never>?
+    private var setupTask: Task<Void, Never>?
+    private var terminationObserver: NSObjectProtocol?
+    private var isStopped = false
 
     // MARK: - Initialization
     init?() {
@@ -96,26 +99,39 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         MRMediaRemoteSetRepeatModeFunction = unsafeBitCast(
             MRMediaRemoteSetRepeatModePointer, to: (@convention(c) (Int) -> Void).self)
 
-        Task { await setupNowPlayingObserver() }
+        terminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.stop()
+        }
+        setupTask = Task { @MainActor [weak self] in
+            await self?.setupNowPlayingObserver()
+        }
     }
 
     deinit {
-        streamTask?.cancel()
-        
-        if let pipeHandler = self.pipeHandler {
-            Task { await pipeHandler.close()
-            }
-        }
-        
-        if let process = self.process {
-            if process.isRunning {
-                process.terminate()
-                process.waitUntilExit()
-            }
-        }
+        stop()
+    }
 
-        self.process = nil
-        self.pipeHandler = nil
+    /// Stop immediately without waiting on the UI thread for the child to exit.
+    private func stop() {
+        isStopped = true
+        setupTask?.cancel()
+        setupTask = nil
+        streamTask?.cancel()
+        streamTask = nil
+        if let terminationObserver {
+            NotificationCenter.default.removeObserver(terminationObserver)
+            self.terminationObserver = nil
+        }
+        if let process, process.isRunning {
+            process.terminate()
+        }
+        process = nil
+        if let pipeHandler {
+            Task { await pipeHandler.close() }
+        }
+        pipeHandler = nil
     }
 
     // MARK: - Protocol Implementation
@@ -187,7 +203,9 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
     }
     
     // MARK: - Setup Methods
+    @MainActor
     private func setupNowPlayingObserver() async {
+        guard !isStopped, !Task.isCancelled else { return }
         let process = Process()
         guard
             let scriptURL = Bundle.main.url(forResource: "mediaremote-adapter", withExtension: "pl"),
@@ -202,26 +220,26 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         
         let pipeHandler = JSONLinesPipeHandler()
         process.standardOutput = await pipeHandler.getPipe()
-        
+        guard !isStopped, !Task.isCancelled else {
+            await pipeHandler.close()
+            return
+        }
+
         self.process = process
         self.pipeHandler = pipeHandler
 
         do {
             try process.run()
-            streamTask = Task { [weak self] in
-                await self?.processJSONStream()
+            // The long-lived reader owns only the pipe. Holding self across this
+            // await prevents deinit when the selected music provider changes.
+            streamTask = Task { [weak self, pipeHandler] in
+                await pipeHandler.readJSONLines(as: NowPlayingUpdate.self) { [weak self] update in
+                    guard !Task.isCancelled else { return }
+                    await self?.handleAdapterUpdate(update)
+                }
             }
         } catch {
             assertionFailure("Failed to launch mediaremote-adapter.pl: \(error)")
-        }
-    }
-
-    // MARK: - Async Stream Processing
-    private func processJSONStream() async {
-        guard let pipeHandler = self.pipeHandler else { return }
-        
-        await pipeHandler.readJSONLines(as: NowPlayingUpdate.self) { [weak self] update in
-            await self?.handleAdapterUpdate(update)
         }
     }
 
@@ -351,6 +369,8 @@ actor JSONLinesPipeHandler {
     private let pipe: Pipe
     private let fileHandle: FileHandle
     private var buffer = ""
+    private var pendingRead: CheckedContinuation<Data, Error>?
+    private var isClosed = false
     
     init() {
         self.pipe = Pipe()
@@ -372,7 +392,7 @@ actor JSONLinesPipeHandler {
     }
     
     private func processLines<T: Decodable>(as type: T.Type, onLine: @escaping (T) async -> Void) async throws {
-        while true {
+        while !Task.isCancelled {
             let data = try await readData()
             guard !data.isEmpty else { break }
             
@@ -404,23 +424,29 @@ actor JSONLinesPipeHandler {
     }
     
     private func readData() async throws -> Data {
+        guard !isClosed, !Task.isCancelled else { return Data() }
         return try await withCheckedThrowingContinuation { continuation in
-            
-            fileHandle.readabilityHandler = { handle in
-                let data = handle.availableData
-                handle.readabilityHandler = nil
-                continuation.resume(returning: data)
+            pendingRead = continuation
+            fileHandle.readabilityHandler = { [weak self] _ in
+                Task { await self?.consumeAvailableData() }
             }
         }
     }
-    
+
+    private func consumeAvailableData() {
+        guard !isClosed, let continuation = pendingRead else { return }
+        pendingRead = nil
+        fileHandle.readabilityHandler = nil
+        continuation.resume(returning: fileHandle.availableData)
+    }
+
     func close() async {
-        do {
-            fileHandle.readabilityHandler = nil
-            try fileHandle.close()
-            try pipe.fileHandleForWriting.close()
-        } catch {
-            print("Error closing pipe handler: \(error)")
-        }
+        guard !isClosed else { return }
+        isClosed = true
+        fileHandle.readabilityHandler = nil
+        pendingRead?.resume(returning: Data())
+        pendingRead = nil
+        try? fileHandle.close()
+        try? pipe.fileHandleForWriting.close()
     }
 }

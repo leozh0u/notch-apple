@@ -17,6 +17,7 @@ enum TempFileType {
 
 class TemporaryFileStorageService {
     static let shared = TemporaryFileStorageService()
+    static let storageDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("boringNotch-Shelf", isDirectory: true)
     
     // MARK: - Public Interface
     
@@ -29,9 +30,10 @@ class TemporaryFileStorageService {
     }
     
     func removeTemporaryFileIfNeeded(at url: URL) {
-        let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
+        let tempDirectory = Self.storageDirectory.resolvingSymlinksInPath()
+        let url = url.resolvingSymlinksInPath()
 
-        guard url.path.hasPrefix(tempDirectory.path) else {
+        guard url.path.hasPrefix(tempDirectory.path + "/") else {
             print("Attempted to remove temporary file outside temp directory: \(url.path)")
             return
         }
@@ -58,18 +60,20 @@ class TemporaryFileStorageService {
     // MARK: - Private Implementation
     
     private func createTempFile(for type: TempFileType) -> URL? {
-        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+        let tempDir = Self.storageDirectory
         let uuid = UUID().uuidString
         
         switch type {
         case .data(let data, let suggestedName):
-            let filename = suggestedName ?? ".dat"
+            let candidate = suggestedName?.components(separatedBy: "/").last ?? ""
+            let filename = ["", ".", "..", "/"].contains(candidate) ? "Data.dat" : candidate
             let dirURL = tempDir.appendingPathComponent(uuid, isDirectory: true)
             let fileURL = dirURL.appendingPathComponent(filename)
+            guard fileURL.deletingLastPathComponent().standardizedFileURL == dirURL.standardizedFileURL else { return nil }
             
             do {
                 try FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
-                try data.write(to: fileURL)
+                try data.write(to: fileURL, options: .withoutOverwriting)
                 return fileURL
             } catch {
                 print("Error: \(error)")
@@ -127,7 +131,7 @@ class TemporaryFileStorageService {
         }
     }
     func createZip(from urls: [URL], suggestedName: String? = nil) async -> URL? {
-        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+        let tempDir = Self.storageDirectory
         let uuid = UUID().uuidString
         let workingDir = tempDir.appendingPathComponent("zip_\(uuid)", isDirectory: true)
 

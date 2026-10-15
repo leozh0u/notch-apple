@@ -16,7 +16,10 @@ struct Bookmark: Sendable, Equatable, Codable {
     }
 
     init(url: URL) throws {
-        guard url.isFileURL, FileManager.default.fileExists(atPath: url.path) else {
+        let startedAccess = url.startAccessingSecurityScopedResource()
+        defer { if startedAccess { url.stopAccessingSecurityScopedResource() } }
+        guard url.isFileURL, FileManager.default.fileExists(atPath: url.path),
+              FileManager.default.isReadableFile(atPath: url.path) else {
             throw NSError(domain: "Bookmark", code: 1, userInfo: [NSLocalizedDescriptionKey: "Not a valid file URL or file does not exist at \(url.path)"])
         }
         do {

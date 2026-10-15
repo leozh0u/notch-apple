@@ -30,6 +30,15 @@ struct ShelfView: View {
             updateQuickLookSelection()
         }
         .quickLookPresenter(using: quickLookService)
+        .alert("Couldn't add to Shelf", isPresented: Binding(
+            get: { tvm.importError != nil },
+            set: { if !$0 { tvm.importError = nil } }
+        )) {
+            Button("Add files…") { tvm.chooseFiles() }
+            Button("OK", role: .cancel) { tvm.importError = nil }
+        } message: {
+            Text(tvm.importError ?? "")
+        }
     }
     
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
@@ -67,8 +76,13 @@ struct ShelfView: View {
                 style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [10])
             )
             .overlay {
-                content
-                    .padding()
+                VStack(spacing: 8) {
+                    content
+                    Button("Add files…") { tvm.chooseFiles() }
+                        .buttonStyle(.borderless)
+                        .help("Choose files or folders to add to Shelf")
+                }
+                .padding()
             }
             .transaction { transaction in
                 transaction.animation = vm.animation

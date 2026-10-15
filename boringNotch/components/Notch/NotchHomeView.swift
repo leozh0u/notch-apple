@@ -19,7 +19,7 @@ struct MusicPlayerView: View {
     var body: some View {
         HStack {
             AlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace).padding(.all, 5)
-            MusicControlsView().drawingGroup().compositingGroup()
+            MusicControlsView()
         }
     }
 }
@@ -140,6 +140,15 @@ struct MusicControlsView: View {
 
     private func songInfo(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
+            if Defaults[.mediaController] == .spotify && musicManager.songDuration == 0 {
+                Button("Open Spotify", action: musicManager.openSpotify)
+                    .buttonStyle(.bordered)
+                    .tint(.effectiveAccent)
+                    .help("Open Spotify to choose a track")
+                if let error = musicManager.appLaunchError {
+                    Text(error).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
             MarqueeText(
                 $musicManager.songTitle, font: .headline, nsFont: .headline, textColor: .white,
                 frameWidth: width)
@@ -154,7 +163,7 @@ struct MusicControlsView: View {
             )
             .fontWeight(.medium)
             if Defaults[.enableLyrics] {
-                TimelineView(.animation(minimumInterval: 0.25)) { timeline in
+                TimelineView(.animation(minimumInterval: 0.25, paused: !musicManager.isPlaying || musicManager.syncedLyrics.isEmpty)) { timeline in
                     let currentElapsed: Double = {
                         guard musicManager.isPlaying else { return musicManager.elapsedTime }
                         let delta = timeline.date.timeIntervalSince(musicManager.timestampDate)
@@ -190,7 +199,7 @@ struct MusicControlsView: View {
     }
 
     private var musicSlider: some View {
-        TimelineView(.animation(minimumInterval: musicManager.playbackRate > 0 ? 0.1 : nil)) { timeline in
+        TimelineView(.animation(minimumInterval: 0.5, paused: !musicManager.isPlaying)) { timeline in
             MusicSliderView(
                 sliderValue: $sliderValue,
                 duration: $musicManager.songDuration,
@@ -241,7 +250,7 @@ struct MusicControlsView: View {
     private func slotView(for slot: MusicControlButton) -> some View {
         switch slot {
         case .shuffle:
-            HoverButton(icon: "shuffle", iconColor: musicManager.isShuffled ? Color(nsColor: musicManager.avgColor).ensureMinimumBrightness(factor: 0.8) : .primary, scale: .medium) {
+            HoverButton(icon: "shuffle", iconColor: musicManager.isShuffled ? Color.effectiveAccent : .primary, scale: .medium) {
                 MusicManager.shared.toggleShuffle()
             }
         case .previous:
@@ -460,8 +469,8 @@ struct NotchHomeView: View {
             MusicPlayerView(albumArtNamespace: albumArtNamespace)
 
             if Defaults[.showCalendar] {
-                CalendarView()
-                    .frame(width: shouldShowCamera ? 170 : 215)
+                UpcomingCalendarView()
+                    .frame(width: 205)
                     .onHover { isHovering in
                         vm.isHoveringCalendar = isHovering
                     }

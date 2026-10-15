@@ -29,6 +29,7 @@ class SpotifyController: MediaControllerProtocol {
 
     var supportsFavorite: Bool { false }
 
+    private var workspaceObservers: [NSObjectProtocol] = []
     private var notificationTask: Task<Void, Never>?
     
     // Constant for time between command and update
@@ -39,6 +40,14 @@ class SpotifyController: MediaControllerProtocol {
     
     init() {
         setupPlaybackStateChangeObserver()
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            let observer = NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      app.bundleIdentifier == "com.spotify.client" else { return }
+                Task { await self?.updatePlaybackInfo() }
+            }
+            workspaceObservers.append(observer)
+        }
         Task {
             if isActive() {
                 await updatePlaybackInfo()
@@ -59,6 +68,7 @@ class SpotifyController: MediaControllerProtocol {
     }
     
     deinit {
+        workspaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
         notificationTask?.cancel()
         artworkFetchTask?.cancel()
     }
@@ -97,6 +107,12 @@ class SpotifyController: MediaControllerProtocol {
     }
     
     func updatePlaybackInfo() async {
+        guard isActive() else {
+            artworkFetchTask?.cancel()
+            lastArtworkURL = nil
+            await MainActor.run { self.playbackState = PlaybackState(bundleIdentifier: "com.spotify.client", title: "Nothing playing", artist: "Open Spotify to choose a track") }
+            return
+        }
         guard let descriptor = try? await fetchPlaybackInfoAsync() else { return }
         guard descriptor.numberOfItems >= 10 else { return }
         
@@ -119,7 +135,7 @@ class SpotifyController: MediaControllerProtocol {
             album: currentTrackAlbum,
             currentTime: currentTime,
             duration: duration,
-            playbackRate: 1,
+            playbackRate: isPlaying ? 1 : 0,
             isShuffled: isShuffled,
             repeatMode: isRepeating ? .all : .off,
             lastUpdated: Date(),
@@ -163,6 +179,7 @@ class SpotifyController: MediaControllerProtocol {
 // MARK: - Private Methods
     
     private func executeCommand(_ command: String) async {
+        guard isActive() else { return }
         let script = "tell application \"Spotify\" to \(command)"
         try? await AppleScriptHelper.executeVoid(script)
     }

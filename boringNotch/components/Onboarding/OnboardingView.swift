@@ -31,7 +31,7 @@ struct OnboardingView: View {
             case .welcome:
                 WelcomeView {
                     withAnimation(.easeInOut(duration: 0.6)) {
-                        step = .cameraPermission
+                        step = .musicPermission
                     }
                 }
                 .transition(.opacity)
