@@ -20,6 +20,7 @@ let tabs = [
 ]
 
 struct TabSelectionView: View {
+    @EnvironmentObject private var vm: BoringViewModel
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @Namespace var animation
     var body: some View {
@@ -27,6 +28,8 @@ struct TabSelectionView: View {
             ForEach(tabs) { tab in
                     TabButton(label: tab.label, icon: tab.icon, selected: coordinator.currentView == tab.view) {
                         withAnimation(.smooth) {
+                            vm.isSpotifySearchFocused = false
+                            vm.isSpotifyBrowserPresented = false
                             coordinator.currentView = tab.view
                         }
                     }

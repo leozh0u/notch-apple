@@ -6,7 +6,7 @@ import tempfile
 
 root = Path(__file__).resolve().parents[1]
 manager = (root / "boringNotch/managers/CalendarManager.swift").read_text()
-selector = manager[manager.index("    static func nextEvents("):manager.index("    func checkCalendarAuthorization()")]
+selector = manager[manager.index("    static func nextEvents("):manager.index("    func openCalendarPrivacySettings()")]
 harness = """
 import Cocoa
 
@@ -49,7 +49,19 @@ assert(select([]).isEmpty)
 assert(select([event("all-day", 0, 1_800, allDay: true)]) == ["all-day"], "Keep ongoing all-day events")
 assert(select([event("birthday", 900, 1_800, type: .birthday)]) == ["birthday"])
 assert(select([event("b", 1_200, 1_300), event("a", 1_200, 1_300)]) == ["a", "b"], "Stable ordering for ties")
-print("Upcoming calendar checks passed: ongoing, next two, ordering, bounds, selections, reminders and all-day.")
+let boundary = Selection.nextRefreshDate(from: [ongoing, next], now: now)
+assert(boundary == ongoing.end, "Refresh when an ongoing event ends")
+assert(Selection.nextRefreshDate(from: [next], now: now) == next.start, "Refresh when the next event starts")
+assert(Selection.nextRefreshDate(from: [event("ended", 800, 900)], now: now) > now,
+       "Ended events cannot create a busy refresh loop")
+var utc = Calendar(identifier: .gregorian)
+utc.timeZone = TimeZone(secondsFromGMT: 0)!
+let midnight = utc.dateInterval(of: .day, for: now)!.end
+assert(Selection.nextRefreshDate(from: [], now: now, calendar: utc) == midnight,
+       "An empty agenda refreshes at midnight without polling")
+assert(Selection.nextRefreshDate(from: [event("later-day", 100_000, 100_100)], now: now, calendar: utc) == midnight,
+       "Refresh the date before a later day's event")
+print("Upcoming calendar checks passed: ongoing, next two, ordering, bounds, selections, reminders, all-day and refresh boundaries.")
 """.replace("SELECTOR", selector)
 
 with tempfile.TemporaryDirectory(prefix="notch-calendar-check-") as directory:

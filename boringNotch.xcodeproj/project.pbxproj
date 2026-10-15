@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A01015202600000000000018 /* SpotifyPlaybackRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A01015202600000000000017 /* SpotifyPlaybackRequest.swift */; };
+		A01015202600000000000016 /* SpotifyBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A01015202600000000000015 /* SpotifyBrowserView.swift */; };
+		A01015202600000000000014 /* SpotifyLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A01015202600000000000013 /* SpotifyLibrary.swift */; };
+		A01015202600000000000012 /* SpotifyAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = A01015202600000000000011 /* SpotifyAuthorization.swift */; };
 		A01015202600000000000008 /* FocusDurationDial.swift in Sources */ = {isa = PBXBuildFile; fileRef = A01015202600000000000007 /* FocusDurationDial.swift */; };
 		A01015202600000000000006 /* UpcomingCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A01015202600000000000005 /* UpcomingCalendarView.swift */; };
 		A01015202600000000000004 /* NotchAppleControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A01015202600000000000003 /* NotchAppleControls.swift */; };
@@ -185,6 +189,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A01015202600000000000017 /* SpotifyPlaybackRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../../models/SpotifyPlaybackRequest.swift"; sourceTree = "<group>"; };
+		A01015202600000000000015 /* SpotifyBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SpotifyBrowserView.swift"; sourceTree = "<group>"; };
+		A01015202600000000000013 /* SpotifyLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../../managers/SpotifyLibrary.swift"; sourceTree = "<group>"; };
+		A01015202600000000000011 /* SpotifyAuthorization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../../managers/SpotifyAuthorization.swift"; sourceTree = "<group>"; };
 		A01015202600000000000007 /* FocusDurationDial.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FocusDurationDial.swift"; sourceTree = "<group>"; };
 		A01015202600000000000005 /* UpcomingCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Calendar/UpcomingCalendarView.swift"; sourceTree = "<group>"; };
 		A01015202600000000000003 /* NotchAppleControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchAppleControls.swift; sourceTree = "<group>"; };
@@ -718,6 +726,10 @@
 				9AB0C6BB2C73C9CB00F7CD30 /* NotchHomeView.swift */,
 				A01015202600000000000003 /* NotchAppleControls.swift */,
 				A01015202600000000000007 /* FocusDurationDial.swift */,
+				A01015202600000000000017 /* SpotifyPlaybackRequest.swift */,
+				A01015202600000000000015 /* SpotifyBrowserView.swift */,
+				A01015202600000000000013 /* SpotifyLibrary.swift */,
+				A01015202600000000000011 /* SpotifyAuthorization.swift */,
 				A01015202600000000000005 /* UpcomingCalendarView.swift */,
 				14D570C52C5F38210011E668 /* BoringHeader.swift */,
 				14D570D12C5F6C6A0011E668 /* BoringExtrasMenu.swift */,
@@ -975,6 +987,10 @@
 				9AB0C6BD2C73C9CB00F7CD30 /* NotchHomeView.swift in Sources */,
 				A01015202600000000000004 /* NotchAppleControls.swift in Sources */,
 				A01015202600000000000008 /* FocusDurationDial.swift in Sources */,
+				A01015202600000000000018 /* SpotifyPlaybackRequest.swift in Sources */,
+				A01015202600000000000016 /* SpotifyBrowserView.swift in Sources */,
+				A01015202600000000000014 /* SpotifyLibrary.swift in Sources */,
+				A01015202600000000000012 /* SpotifyAuthorization.swift in Sources */,
 				A01015202600000000000006 /* UpcomingCalendarView.swift in Sources */,
 				B172AAC02C95DA0B001623F1 /* InlineHUD.swift in Sources */,
 				14E9FEAA2C70BF610062E83F /* DownloadView.swift in Sources */,
@@ -1058,14 +1074,14 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BoringNotchXPCHelper/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = BoringNotchXPCHelper;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.2.1;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.leozhou.notchapple.BoringNotchXPCHelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1083,14 +1099,14 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BoringNotchXPCHelper/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = BoringNotchXPCHelper;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.2.1;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.leozhou.notchapple.BoringNotchXPCHelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1237,7 +1253,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"boringNotch/Preview Content\"";
 				DEVELOPMENT_TEAM = "";
@@ -1265,7 +1281,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.2.1;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.leozhou.notchapple;
 				PRODUCT_NAME = "Notch Apple";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1292,7 +1308,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"boringNotch/Preview Content\"";
 				DEVELOPMENT_TEAM = "";
@@ -1319,7 +1335,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.2.1;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.leozhou.notchapple;
 				PRODUCT_NAME = "Notch Apple";
 				PROVISIONING_PROFILE_SPECIFIER = "";

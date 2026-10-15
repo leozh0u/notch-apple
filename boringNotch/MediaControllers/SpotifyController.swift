@@ -31,6 +31,9 @@ class SpotifyController: MediaControllerProtocol {
 
     private var workspaceObservers: [NSObjectProtocol] = []
     private var notificationTask: Task<Void, Never>?
+    private var playbackCommandRevision = 0
+    private var playbackCommandPending = false
+    private var confirmedPlaying = false
     
     // Constant for time between command and update
     private let commandUpdateDelay: Duration = .milliseconds(25)
@@ -74,13 +77,11 @@ class SpotifyController: MediaControllerProtocol {
     }
     
     // MARK: - Protocol Implementation
-    func play() async { await executeCommand("play") }
-    func pause() async { await executeCommand("pause") }
-    func togglePlay() async { await executeCommand("playpause") }
-    func nextTrack() async { await executeCommand("next track") }
-    func previousTrack() async {
-        await executeAndRefresh("previous track")
-    }
+    func play() async { await sendPlaybackCommand("Play", desiredPlaying: true) }
+    func pause() async { await sendPlaybackCommand("Paus", desiredPlaying: false) }
+    func togglePlay() async { await sendPlaybackCommand("PlPs", togglesPlayback: true) }
+    func nextTrack() async { await sendPlaybackCommand("Next") }
+    func previousTrack() async { await sendPlaybackCommand("Prev") }
     
     func seek(to time: Double) async {
         await executeAndRefresh("set player position to \(time)")
@@ -106,7 +107,10 @@ class SpotifyController: MediaControllerProtocol {
         NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == playbackState.bundleIdentifier }
     }
     
+    @MainActor
     func updatePlaybackInfo() async {
+        guard !playbackCommandPending else { return }
+        let revision = playbackCommandRevision
         guard isActive() else {
             artworkFetchTask?.cancel()
             lastArtworkURL = nil
@@ -114,7 +118,8 @@ class SpotifyController: MediaControllerProtocol {
             return
         }
         guard let descriptor = try? await fetchPlaybackInfoAsync() else { return }
-        guard descriptor.numberOfItems >= 10 else { return }
+        guard !playbackCommandPending, playbackCommandRevision == revision,
+              descriptor.numberOfItems >= 10 else { return }
         
         let isPlaying = descriptor.atIndex(1)?.booleanValue ?? false
         let currentTrack = descriptor.atIndex(2)?.stringValue ?? "Unknown"
@@ -147,7 +152,8 @@ class SpotifyController: MediaControllerProtocol {
             state.artwork = existingArtwork
         }
 
-    playbackState = state
+        confirmedPlaying = state.isPlaying
+        playbackState = state
 
         if !artworkURL.isEmpty, let url = URL(string: artworkURL) {
             guard artworkURL != lastArtworkURL || state.artwork == nil else { return }
@@ -161,7 +167,10 @@ class SpotifyController: MediaControllerProtocol {
 
                     await MainActor.run { [weak self] in
                         guard let self = self else { return }
-                        var updatedState = currentState
+                        guard self.playbackState.title == currentState.title,
+                              self.playbackState.artist == currentState.artist,
+                              self.playbackState.album == currentState.album else { return }
+                        var updatedState = self.playbackState
                         updatedState.artwork = data
                         self.playbackState = updatedState
                         self.lastArtworkURL = artworkURL
@@ -178,6 +187,37 @@ class SpotifyController: MediaControllerProtocol {
     
 // MARK: - Private Methods
     
+    @MainActor
+    private func sendPlaybackCommand(_ command: String, desiredPlaying: Bool? = nil, togglesPlayback: Bool = false) async {
+        guard isActive() else { return }
+        playbackCommandRevision += 1
+        let revision = playbackCommandRevision
+        playbackCommandPending = true
+        if let desired = togglesPlayback ? !playbackState.isPlaying : desiredPlaying {
+            var state = playbackState
+            if state.isPlaying {
+                state.currentTime += Date().timeIntervalSince(state.lastUpdated) * state.playbackRate
+            }
+            state.isPlaying = desired
+            state.playbackRate = desired ? 1 : 0
+            state.lastUpdated = Date()
+            playbackState = state
+        }
+        do {
+            try await SpotifyPlaybackTransport.send(command: command)
+        } catch {
+            guard playbackCommandRevision == revision else { return }
+            playbackState.isPlaying = confirmedPlaying
+            playbackState.playbackRate = confirmedPlaying ? 1 : 0
+        }
+        // Later clicks own the optimistic state. A prior reply or metadata fetch
+        // must not flip it back while those commands are still queued.
+        guard playbackCommandRevision == revision else { return }
+        playbackCommandPending = false
+        try? await Task.sleep(for: commandUpdateDelay)
+        await updatePlaybackInfo()
+    }
+
     private func executeCommand(_ command: String) async {
         guard isActive() else { return }
         let script = "tell application \"Spotify\" to \(command)"

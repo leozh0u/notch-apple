@@ -3,6 +3,7 @@ import EventKit
 import SwiftUI
 
 struct UpcomingCalendarView: View {
+    @EnvironmentObject private var vm: BoringViewModel
     @ObservedObject private var calendarManager = CalendarManager.shared
     @Default(.calendarSelectionState) private var calendarSelection
     @Environment(\.openURL) private var openURL
@@ -79,9 +80,7 @@ struct UpcomingCalendarView: View {
                     .foregroundStyle(.gray)
                     .lineLimit(2)
                 Button("Calendar Settings") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
-                        openURL(url)
-                    }
+                    calendarManager.openCalendarPrivacySettings()
                 }
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.white)
@@ -90,7 +89,21 @@ struct UpcomingCalendarView: View {
         }
         .buttonStyle(.plain)
         .frame(width: 205, height: 140, alignment: .topLeading)
-        .task { await refresh() }
+        .task(id: vm.notchState == .open) {
+            guard vm.notchState == .open else { return }
+            await refresh()
+        }
+        .task(id: nextRefreshDate) {
+            guard vm.notchState == .open else { return }
+            do {
+                try await Task.sleep(for: .seconds(max(0.05, nextRefreshDate.timeIntervalSinceNow)))
+                try Task.checkCancellation()
+                guard vm.notchState == .open else { return }
+                await refresh()
+            } catch is CancellationError {
+                // Closing the island cancels its only scheduled wake-up.
+            } catch {}
+        }
         .onChange(of: selectionIDs) { _, _ in
             Task { await refresh() }
         }
@@ -100,6 +113,10 @@ struct UpcomingCalendarView: View {
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
             Task { await refresh() }
         }
+    }
+
+    private var nextRefreshDate: Date {
+        CalendarManager.nextRefreshDate(from: calendarManager.upcomingEvents, now: today)
     }
 
     private var selectionIDs: Set<String>? {

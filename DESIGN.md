@@ -37,13 +37,15 @@ The nominal expanded notch is 640 by 235 pt. The window reserves 20 pt below for
 
 Keep one Home/Shelf tab row in the header. Music and optional Calendar/camera content share the upper area. The Home stack leaves 12 pt between this content and the focus-only footer. The footer contains the Focus label, duration dial button, Start/Pause and End/Reset. It uses 8 pt between items, 5 pt horizontal inset and 8 pt top inset. Calendar and Shelf shortcuts do not repeat in this footer. The battery indicator is off by default; it remains available as an optional setting. Preserve user-configurable music slots.
 
+The Spotify browser replaces the Home content inside the same shell. Hide the focus footer while browsing, and keep the outer Home/Shelf navigation unchanged. Return to the player through Now Playing.
+
 The closed state places small artwork and five rounded playback bars on opposite sides of the camera. Preserve the central camera clearance. The player artwork dimensions are 90 by 90 pt expanded and 20 by 20 pt closed.
 
 ## Elevation & Depth
 
 The notch is an opaque black surface. Its optional shadow appears while open or hovered, using black at 0.7 opacity and a radius of 6 pt with corner scaling or 4 pt without it. The artwork lighting effect uses blurred artwork (40 pt blur, 0.18 opacity while playing). Keep that effect local to the artwork and preserve the clean outer edge.
 
-Settings retains native layered surfaces. The focus footer uses one subtle top divider, white at 0.12 opacity with a height of 0.5 pt. Both window implementations use the `.mainMenu + 3` level so system menus can appear above the island.
+Settings retains native layered surfaces. The focus footer uses one subtle top divider, white at 0.12 opacity with a height of 0.5 pt. Both window implementations retain the `.mainMenu + 3` level used by the placement and hover hotfix below.
 
 ## Shapes
 
@@ -54,6 +56,16 @@ Preserve the existing notch silhouette. With corner scaling enabled, the expande
 ### Music controls
 
 The white play/pause circle contains a black symbol, with plain previous/next and configurable companion controls. Keep provider-dependent availability, disabled states and permissions. Playback progress uses a rounded track, 5 pt high at rest and 9 pt while dragging, inside a 10 pt layout height. The slider's existing spring has response 0.35 and damping fraction 0.7.
+
+### Native Spotify browser
+
+Keep the browser native SwiftUI, with no WebView. Artwork and the browse button open it from the player. Its toolbar contains a Spotify/back action, a rounded-border search field, a mini Songs/Albums segmented picker, loading state, playback control and Now Playing. Search submits on Return. Albums, Liked Songs and Playlists use one underlined section row, with the effective accent on the selected underline.
+
+Album and playlist shelves scroll horizontally. Tiles use 66 pt square artwork in an 82 pt column, medium 11 pt names and secondary 10 pt subtitles. Collection detail uses a 185 pt identity column with 50 pt artwork and a Play all capsule beside a vertical song list. Song rows retain the title, artist and monospaced duration. Names truncate within their allocated space; help and accessibility labels keep the full identity.
+
+Previous page and Next page share a 20 pt footer. Their enabled states follow the current offset and page metadata. Keep metadata bounded to the current page (20 albums/playlists, 50 collection tracks or 10 search results). Show loading, empty, retry and connection states in the content area. Set up Spotify leads to Media settings; browser sign-in uses PKCE with Keychain tokens and the three read-only library/playlist scopes. Playback uses the installed Spotify app hidden in the background.
+
+This is a core music-library browser. Preserve its implemented scope: album, song and playlist browsing, Songs/Albums search and native playback. Queue editing, recommendations, podcasts, artist search and account management are outside this interface.
 
 ### Focus timer and duration dial
 
@@ -66,6 +78,8 @@ Starting focus closes the editor, unpins the island and requests that it close. 
 ### Optional Calendar
 
 Calendar is off by default until the user chooses setup in Settings. Connect Calendar requests macOS Calendar access and enables upcoming events after full access is granted. Google accounts connect through macOS Calendar's Add Account flow. The optional upcoming-event area belongs beside music, with no Calendar shortcut in the focus footer.
+
+Show only events from the selected calendars, including the chosen Google account's calendars exposed through macOS Calendar. The compact area is 205 by 140 pt and shows the date and next two events, with a native Calendar action. Keep permission, no-calendar, no-selection and no-event states distinct. Scheduled refresh at event boundaries runs only while the island is open; closing cancels that wake-up. This bridge has no separate Google app sign-in or Gmail message access.
 
 ### Playback bars and idle eyes
 
@@ -92,3 +106,9 @@ Retain the inherited opening spring (response 0.42, damping fraction 0.8), closi
 ## Native placement regression check
 
 Version 0.2.1 restores the original `.mainMenu + 3` panel level and rectangular hover content shape. On this Mac, lowering the panel to `.floating` displaced the closed notch below the menu bar and broke normal hover. Keep the painted `NotchShape` unchanged. Verify closed placement and hover on the actual desktop; a cropped app capture cannot establish alignment with the screen edge. Leo confirmed the repaired build is flush and opens normally on 15 October 2026.
+
+## Spotify interaction corrections
+
+Search uses a native NSSearchField that explicitly accepts keyboard focus on click. Preserve the query during music updates and clear editing focus when the panel loses key status. Hovering alone must not activate the app or focus Search. Hide the Search for picker label while keeping its accessibility label.
+
+Hide pagination for single-page collections. Longer collections show their current source range and working Previous/Next controls. Disable the island’s outer swipe gesture while browsing so two-finger list scrolling cannot move or close the shell. Playback feedback updates immediately and is reconciled with Spotify’s actual state; track selection uses non-interactive native playback events and hides Spotify afterward.

@@ -73,6 +73,13 @@ struct DynamicNotchApp: App {
     }
 }
 
+// SwiftUI's hosting surface must opt into keyboard input in a nonactivating panel.
+final class NotchHostingView<Content: View>: NSHostingView<Content> {
+    override var acceptsFirstResponder: Bool { true }
+    override var needsPanelToBecomeKey: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var windows: [String: NSWindow] = [:] // UUID -> NSWindow
@@ -96,7 +103,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.isIslandPinned = pinned
         let models = Defaults[.showOnAllDisplays] ? Array(viewModels.values) : [vm]
         for model in models {
-            if pinned { model.open() } else { model.close() }
+            if pinned { model.open() } else {
+                model.isSpotifySearchFocused = false
+                model.isSpotifyBrowserPresented = false
+                model.close()
+            }
         }
     }
 
@@ -276,7 +287,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.disableSkyLight()
         }
 
-        window.contentView = NSHostingView(
+        window.contentView = NotchHostingView(
             rootView: ContentView()
                 .environmentObject(viewModel)
         )

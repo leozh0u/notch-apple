@@ -132,13 +132,13 @@ struct ContentView: View {
                     .onTapGesture {
                         doOpen()
                     }
-                    .conditionalModifier(Defaults[.enableGestures]) { view in
+                    .conditionalModifier(Defaults[.enableGestures] && !vm.isSpotifyBrowserPresented) { view in
                         view
                             .panGesture(direction: .down) { translation, phase in
                                 handleDownGesture(translation: translation, phase: phase)
                             }
                     }
-                    .conditionalModifier(Defaults[.closeGestureEnabled] && Defaults[.enableGestures]) { view in
+                    .conditionalModifier(Defaults[.closeGestureEnabled] && Defaults[.enableGestures] && !vm.isSpotifyBrowserPresented) { view in
                         view
                             .panGesture(direction: .up) { translation, phase in
                                 handleUpGesture(translation: translation, phase: phase)
@@ -164,6 +164,9 @@ struct ContentView: View {
                                 isHovering = false
                             }
                         }
+                    }
+                    .onChange(of: vm.isSpotifyBrowserPresented) { _, presented in
+                        if presented { gestureProgress = .zero }
                     }
                     .onChange(of: vm.isBatteryPopoverActive) {
                         if !vm.isBatteryPopoverActive && !vm.isFocusEditorPresented && !isHovering && vm.notchState == .open && !SharingStateManager.shared.preventNotchClose {
@@ -212,6 +215,8 @@ struct ContentView: View {
         .background(dragDetector)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("notchAppleFocusStarted"))) { _ in
             coordinator.isIslandPinned = false
+            vm.isSpotifySearchFocused = false
+            vm.isSpotifyBrowserPresented = false
             vm.close()
         }
         .preferredColorScheme(.dark)
@@ -584,7 +589,7 @@ struct ContentView: View {
     }
 
     private func handleUpGesture(translation: CGFloat, phase: NSEvent.Phase) {
-        guard vm.notchState == .open && !vm.isHoveringCalendar else { return }
+        guard vm.notchState == .open && !vm.isHoveringCalendar && !vm.isSpotifyBrowserPresented else { return }
 
         withAnimation(animationSpring) {
             gestureProgress = (translation / Defaults[.gestureSensitivity]) * -20

@@ -124,6 +124,9 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AccentColorChanged"))) { _ in
             accentColorUpdateTrigger = UUID()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("notchAppleShowMediaSettings"))) { _ in
+            selectedTab = "Media"
+        }
     }
 }
 
@@ -592,6 +595,8 @@ struct HUD: View {
 }
 
 struct Media: View {
+    @ObservedObject private var spotifyLibrary = SpotifyLibrary.shared
+    @State private var spotifyClientID = ""
     @Default(.waitInterval) var waitInterval
     @Default(.mediaController) var mediaController
     @ObservedObject var coordinator = BoringViewCoordinator.shared
@@ -604,9 +609,9 @@ struct Media: View {
     var body: some View {
         Form {
             Section {
-                Defaults.Toggle("Open Spotify when pressing Play", key: .openSpotifyOnPlay)
-                Defaults.Toggle("Open Spotify when Notch Apple starts", key: .launchSpotifyOnStartup)
-                Button("Open Spotify") { MusicManager.shared.openSpotify() }
+                Defaults.Toggle("Start Spotify in background when pressing Play", key: .openSpotifyOnPlay)
+                Defaults.Toggle("Start Spotify in background at launch", key: .launchSpotifyOnStartup)
+                Button("Start Spotify in background") { MusicManager.shared.openSpotify() }
                 Picker("Music Source", selection: $mediaController) {
                     ForEach(availableMediaControllers) { controller in
                         Text(controller.rawValue).tag(controller)
@@ -642,6 +647,43 @@ struct Media: View {
                 }
             }
             
+            Section {
+                if spotifyLibrary.isConnected {
+                    Label("Spotify connected", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Button("Disconnect Spotify", role: .destructive) {
+                        spotifyLibrary.disconnect()
+                    }
+                } else {
+                    TextField("Spotify Client ID", text: $spotifyClientID)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                        .onSubmit(connectSpotify)
+                    HStack {
+                        Button(spotifyLibrary.isConnecting ? "Waiting for Spotify…" : "Connect Spotify", action: connectSpotify)
+                            .disabled(spotifyLibrary.isConnecting || spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        if spotifyLibrary.isConnecting {
+                            ProgressView().controlSize(.small)
+                            Button("Cancel", action: spotifyLibrary.disconnect)
+                        }
+                    }
+                }
+                if let error = spotifyLibrary.errorMessage {
+                    Text(error).font(.caption).foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                Link("Spotify developer dashboard", destination: URL(string: "https://developer.spotify.com/dashboard")!)
+                Text("Create an app, add this redirect URI, then paste its Client ID. A client secret is not needed.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text(SpotifyLibrary.redirectURI)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                Text("Connect opens Spotify sign-in in your browser. Album browsing stays in the island; playback uses the Spotify app in the background.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } header: {
+                Text("Spotify library")
+            }
+
             Section {
                 Toggle(
                     "Show music live activity",
@@ -698,6 +740,16 @@ struct Media: View {
         }
         .accentColor(.effectiveAccent)
         .navigationTitle("Media")
+        .onAppear { spotifyClientID = spotifyLibrary.clientID }
+        .onChange(of: spotifyLibrary.isConnected) { _, connected in
+            if connected { mediaController = .spotify }
+        }
+    }
+
+    private func connectSpotify() {
+        guard !spotifyLibrary.isConnecting else { return }
+        spotifyLibrary.clientID = spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        spotifyLibrary.connect()
     }
 
     // Only show controller options that are available on this macOS version
@@ -712,119 +764,80 @@ struct Media: View {
 
 struct CalendarSettings: View {
     @ObservedObject private var calendarManager = CalendarManager.shared
-    @Default(.showCalendar) var showCalendar: Bool
-    @Default(.hideCompletedReminders) var hideCompletedReminders
-    @Default(.hideAllDayEvents) var hideAllDayEvents
-    @Default(.autoScrollToNextEvent) var autoScrollToNextEvent
+    @State private var requestingAccess = false
+
+    private var hasAccess: Bool { calendarManager.calendarAuthorizationStatus == .fullAccess }
+    private var accessOff: Bool {
+        calendarManager.calendarAuthorizationStatus == .denied
+            || calendarManager.calendarAuthorizationStatus == .restricted
+    }
 
     var body: some View {
         Form {
             Section("Upcoming events") {
                 Defaults.Toggle("Show upcoming events in the island", key: .showCalendar)
-                Button("Connect Calendar") {
-                    Task {
-                        await calendarManager.checkCalendarAuthorization()
-                        if calendarManager.calendarAuthorizationStatus == .fullAccess {
-                            Defaults[.showCalendar] = true
+                Label(hasAccess ? "Calendar access allowed" : accessOff ? "Calendar access is off" : "Calendar is not connected",
+                      systemImage: hasAccess ? "checkmark.circle" : "calendar.badge.exclamationmark")
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button(requestingAccess ? "Connecting…" : hasAccess ? "Refresh calendars" : accessOff ? "Allow Calendar Access…" : "Connect Calendar") {
+                        let wasConnected = hasAccess
+                        requestingAccess = true
+                        Task {
+                            await calendarManager.checkCalendarAuthorization()
+                            if !wasConnected && hasAccess { Defaults[.showCalendar] = true }
+                            requestingAccess = false
                         }
                     }
+                    .disabled(requestingAccess)
+                    Button("Open macOS Calendar") { openCalendar() }
                 }
-                Text("Add your Google account in macOS Calendar → Add Account. Events stay on this Mac.")
+                Text("For Google Calendar, add your Google account in macOS Calendar → Add Account, then select its calendars below.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Defaults.Toggle(key: .hideCompletedReminders) {
-                Text("Hide completed reminders")
-            }
-            Defaults.Toggle(key: .hideAllDayEvents) {
-                Text("Hide all-day events")
-            }
-            Defaults.Toggle(key: .autoScrollToNextEvent) {
-                Text("Auto-scroll to next event")
-            }
-            Defaults.Toggle(key: .showFullEventTitles) {
-                Text("Always show full event titles")
-            }
-            Section(header: Text("Calendars")) {
-                if calendarManager.calendarAuthorizationStatus != .fullAccess {
-                    Text(calendarManager.calendarAuthorizationStatus == .notDetermined ? "Connect Calendar to choose your calendars." : "Calendar access is unavailable. Enable it in System Settings.")
-                        .foregroundColor(.red)
-                        .multilineTextAlignment(.center)
-                        .padding()
-                    Button("Open Calendar Settings") {
-                        if let settingsURL = URL(
-                            string:
-                                "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
-                        ) {
-                            NSWorkspace.shared.open(settingsURL)
-                        }
-                    }
+            Section("Calendars") {
+                if !hasAccess {
+                    Text(accessOff
+                         ? "Allow Notch Apple to read calendars in System Settings → Privacy & Security → Calendars."
+                         : "Connect Calendar to choose which events appear.")
+                        .foregroundStyle(.secondary)
+                } else if calendarManager.eventCalendars.isEmpty {
+                    Text("No calendars are available. Add an account in macOS Calendar, then refresh.")
+                        .foregroundStyle(.secondary)
                 } else {
-                    List {
-                        ForEach(calendarManager.eventCalendars, id: \.id) { calendar in
-                            Toggle(
-                                isOn: Binding(
-                                    get: { calendarManager.getCalendarSelected(calendar) },
-                                    set: { isSelected in
-                                        Task {
-                                            await calendarManager.setCalendarSelected(
-                                                calendar, isSelected: isSelected)
-                                        }
-                                    }
-                                )
-                            ) {
-                                Text(calendar.title)
+                    ForEach(calendarManager.eventCalendars, id: \.id) { calendar in
+                        Toggle(isOn: Binding(
+                            get: { calendarManager.getCalendarSelected(calendar) },
+                            set: { isSelected in
+                                Task { await calendarManager.setCalendarSelected(calendar, isSelected: isSelected) }
                             }
-                            .accentColor(lighterColor(from: calendar.color))
-                            .disabled(!showCalendar)
-                        }
-                    }
-                }
-            }
-            Section(header: Text("Reminders")) {
-                if calendarManager.reminderAuthorizationStatus != .fullAccess {
-                    Text(calendarManager.reminderAuthorizationStatus == .notDetermined ? "Reminders are not connected." : "Reminder access is unavailable. Enable it in System Settings.")
-                        .foregroundColor(.red)
-                        .multilineTextAlignment(.center)
-                        .padding()
-                    Button("Open Reminder Settings") {
-                        if let settingsURL = URL(
-                            string:
-                                "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders"
-                        ) {
-                            NSWorkspace.shared.open(settingsURL)
-                        }
-                    }
-                } else {
-                    List {
-                        ForEach(calendarManager.reminderLists, id: \.id) { calendar in
-                            Toggle(
-                                isOn: Binding(
-                                    get: { calendarManager.getCalendarSelected(calendar) },
-                                    set: { isSelected in
-                                        Task {
-                                            await calendarManager.setCalendarSelected(
-                                                calendar, isSelected: isSelected)
-                                        }
-                                    }
-                                )
-                            ) {
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text(calendar.title)
+                                Text(calendar.account)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
-                            .accentColor(lighterColor(from: calendar.color))
-                            .disabled(!showCalendar)
                         }
+                        .accentColor(lighterColor(from: calendar.color))
+                        .accessibilityLabel("\(calendar.title), \(calendar.account)")
                     }
                 }
             }
         }
         .accentColor(.effectiveAccent)
         .navigationTitle("Calendar")
-        .onAppear {
-            Task {
-                await calendarManager.refreshUpcomingEvents()
-            }
+        .task { await calendarManager.refreshUpcomingEvents() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await calendarManager.refreshUpcomingEvents() }
+        }
+    }
+
+    private func openCalendar() {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
+            NSWorkspace.shared.open(url)
         }
     }
 }

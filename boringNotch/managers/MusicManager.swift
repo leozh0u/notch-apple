@@ -617,7 +617,19 @@ class MusicManager: ObservableObject {
     
     func togglePlay() {
         if Defaults[.mediaController] == .spotify && !isSpotifyRunning {
-            if Defaults[.openSpotifyOnPlay] { openSpotify() }
+            if Defaults[.openSpotifyOnPlay] {
+                Task { @MainActor in
+                    do {
+                        let spotify = try await ensureSpotifyHidden()
+                        try await SpotifyPlaybackTransport.send(command: "Play")
+                        spotify.hide()
+                        appLaunchError = nil
+                        forceUpdate()
+                    } catch {
+                        appLaunchError = "Spotify could not play. Check it is signed in and allow Automation in System Settings."
+                    }
+                }
+            }
             return
         }
         Task { await activeController?.togglePlay() }
@@ -628,14 +640,59 @@ class MusicManager: ObservableObject {
     }
 
     func openSpotify() {
+        Task { @MainActor in
+            do {
+                _ = try await ensureSpotifyHidden()
+                appLaunchError = nil
+            } catch {
+                appLaunchError = error.localizedDescription
+            }
+        }
+    }
+
+    @MainActor
+    private func ensureSpotifyHidden() async throws -> NSRunningApplication {
+        if let running = NSRunningApplication.runningApplications(withBundleIdentifier: "com.spotify.client").first {
+            running.hide()
+            return running
+        }
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.spotify.client") else {
-            appLaunchError = "Spotify is not installed. Download it from spotify.com."
+            throw NSError(domain: "NotchAppleSpotify", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Install Spotify to play music in the background."])
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        configuration.hides = true
+        let running: NSRunningApplication = try await withCheckedThrowingContinuation { continuation in
+            NSWorkspace.shared.openApplication(at: url, configuration: configuration) { app, error in
+                if let error { continuation.resume(throwing: error) }
+                else if let app { continuation.resume(returning: app) }
+                else { continuation.resume(throwing: NSError(domain: "NotchAppleSpotify", code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: "Spotify could not start. Try again."])) }
+            }
+        }
+        for _ in 0..<40 where !running.isFinishedLaunching {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        running.hide()
+        return running
+    }
+
+    func playSpotifyURI(_ uri: String, context: String? = nil) {
+        guard let request = SpotifyPlaybackRequest(uri: uri, context: context) else {
+            appLaunchError = "That Spotify item cannot be played."
             return
         }
-        appLaunchError = nil
-        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
-            DispatchQueue.main.async {
-                self?.appLaunchError = error.map { "Could not open Spotify: \($0.localizedDescription)" }
+        Task { @MainActor in
+            do {
+                Defaults[.mediaController] = .spotify
+                let spotify = try await ensureSpotifyHidden()
+                defer { spotify.hide() }
+                try await request.playInBackground()
+                appLaunchError = nil
+                forceUpdate()
+            } catch {
+                appLaunchError = "Could not play Spotify. Allow control in System Settings → Privacy & Security → Automation, then try again."
             }
         }
     }

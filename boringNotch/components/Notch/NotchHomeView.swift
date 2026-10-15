@@ -58,7 +58,11 @@ struct AlbumArtView: View {
     private var albumArtButton: some View {
         ZStack {
             Button {
-                musicManager.openMusicApp()
+                if Defaults[.mediaController] == .spotify {
+                    vm.isSpotifyBrowserPresented = true
+                } else {
+                    musicManager.openMusicApp()
+                }
             } label: {
                 ZStack(alignment:.bottomTrailing) {
                     albumArtImage
@@ -66,6 +70,8 @@ struct AlbumArtView: View {
                 }
             }
             .buttonStyle(PlainButtonStyle())
+            .help(Defaults[.mediaController] == .spotify ? "Browse Spotify" : "Open music app")
+            .accessibilityLabel(Defaults[.mediaController] == .spotify ? "Browse Spotify" : "Open music app")
             .scaleEffect(musicManager.isPlaying ? 1 : 0.85)
             
             albumArtDarkOverlay
@@ -78,6 +84,7 @@ struct AlbumArtView: View {
             .foregroundColor(Color.black)
             .opacity(musicManager.isPlaying ? 0 : 0.8)
             .blur(radius: 50)
+            .allowsHitTesting(false)
     }
                 
 
@@ -141,10 +148,10 @@ struct MusicControlsView: View {
     private func songInfo(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if Defaults[.mediaController] == .spotify && musicManager.songDuration == 0 {
-                Button("Open Spotify", action: musicManager.openSpotify)
+                Button("Start Spotify", action: musicManager.openSpotify)
                     .buttonStyle(.bordered)
                     .tint(.effectiveAccent)
-                    .help("Open Spotify to choose a track")
+                    .help("Start Spotify in the background")
                 if let error = musicManager.appLaunchError {
                     Text(error).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
@@ -225,6 +232,19 @@ struct MusicControlsView: View {
             ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
                 slotView(for: slot)
                     .frame(alignment: .center)
+            }
+            if Defaults[.mediaController] == .spotify {
+                Button {
+                    vm.isSpotifyBrowserPresented = true
+                } label: {
+                    Label("Browse", systemImage: "square.stack")
+                        .labelStyle(.iconOnly)
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: 26, height: 26)
+                        .fixedSize()
+                }
+                .help("Browse Spotify")
+                .accessibilityLabel("Browse Spotify")
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
@@ -448,9 +468,15 @@ struct NotchHomeView: View {
         Group {
             if !coordinator.firstLaunch {
                 VStack(spacing: 12) {
-                    mainContent
-                        .frame(maxHeight: .infinity)
-                    if showFocusControls {
+                    Group {
+                        if vm.isSpotifyBrowserPresented && Defaults[.mediaController] == .spotify {
+                            SpotifyBrowserView()
+                        } else {
+                            mainContent
+                        }
+                    }
+                    .frame(maxHeight: .infinity)
+                    if showFocusControls && !(vm.isSpotifyBrowserPresented && Defaults[.mediaController] == .spotify) {
                         NotchAppleControls()
                     }
                 }

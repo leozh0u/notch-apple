@@ -28,6 +28,7 @@ class CalendarManager: ObservableObject {
     private let calendarService = CalendarService()
 
     private var eventStoreChangedObserver: NSObjectProtocol?
+    private var upcomingRequestID = UUID()
 
     private init() {
         self.currentWeekStartDate = CalendarManager.startOfDay(Date())
@@ -73,6 +74,8 @@ class CalendarManager: ObservableObject {
     }
 
     private func updateUpcomingEvents() async {
+        let requestID = UUID()
+        upcomingRequestID = requestID
         guard calendarAuthorizationStatus == .fullAccess else {
             upcomingEvents = []
             return
@@ -85,7 +88,8 @@ class CalendarManager: ObservableObject {
         let now = Date()
         let end = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now
         let result = await calendarService.events(from: now, to: end, calendars: Array(ids))
-        guard ids == Set(eventCalendars.map(\.id)).intersection(selectedCalendarIDs),
+        guard requestID == upcomingRequestID,
+              ids == Set(eventCalendars.map(\.id)).intersection(selectedCalendarIDs),
               EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return }
         upcomingEvents = Self.nextEvents(from: result, now: now, until: end, calendarIDs: ids)
     }
@@ -101,6 +105,21 @@ class CalendarManager: ObservableObject {
             if $0.end != $1.end { return $0.end < $1.end }
             return $0.id < $1.id
         }.prefix(2))
+    }
+
+    // Sleep until a displayed event changes state or the date rolls over, rather than polling.
+    static func nextRefreshDate(from events: [EventModel], now: Date, calendar: Calendar = .current) -> Date {
+        let midnight = calendar.dateInterval(of: .day, for: now)?.end
+            ?? now.addingTimeInterval(86_400)
+        return events.flatMap { [$0.start, $0.end] }
+            .filter { $0 > now }
+            .min().map { min($0, midnight) } ?? midnight
+    }
+
+    func openCalendarPrivacySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     func checkCalendarAuthorization() async {
@@ -122,7 +141,7 @@ class CalendarManager: ObservableObject {
                     calendars: selectedCalendars.map { $0.id })
             }
         case .restricted, .denied:
-            NSLog("Calendar access denied or restricted")
+            openCalendarPrivacySettings()
         case .fullAccess:
             NSLog("Full access")
             await reloadCalendarAndReminderLists()
@@ -199,9 +218,8 @@ class CalendarManager: ObservableObject {
                 identifiers.remove(calendar.id)
             }
 
-            selectionState =
-                identifiers.isEmpty
-                ? .all : identifiers.count == allCalendars.count ? .all : .selected(identifiers)  // if empty, select all
+            selectionState = identifiers == Set(allCalendars.map(\.id))
+                ? .all : .selected(identifiers)
         }
 
         Defaults[.calendarSelectionState] = selectionState

@@ -32,6 +32,8 @@ class BoringViewModel: NSObject, ObservableObject {
     @Published var isHoveringCalendar: Bool = false
     @Published var isBatteryPopoverActive: Bool = false
     @Published var isFocusEditorPresented: Bool = false
+    @Published var isSpotifyBrowserPresented: Bool = false
+    @Published var isSpotifySearchFocused: Bool = false
 
     @Published var screenUUID: String?
 
@@ -199,7 +201,7 @@ class BoringViewModel: NSObject, ObservableObject {
     }
 
     func close() {
-        guard !coordinator.isIslandPinned, !isFocusEditorPresented else { return }
+        guard !coordinator.isIslandPinned, !isFocusEditorPresented, !isSpotifySearchFocused else { return }
         // Do not close while a share picker or sharing service is active
         if SharingStateManager.shared.preventNotchClose {
             return
@@ -208,6 +210,7 @@ class BoringViewModel: NSObject, ObservableObject {
         self.closedNotchSize = self.notchSize
         self.notchState = .closed
         self.isBatteryPopoverActive = false
+        self.isSpotifyBrowserPresented = false
         self.coordinator.sneakPeek.show = false
         self.edgeAutoOpenActive = false
 
