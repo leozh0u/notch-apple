@@ -18,6 +18,7 @@ class MusicManager: ObservableObject {
     private var controllerCancellables = Set<AnyCancellable>()
     private var controllerSelectionTask: Task<Void, Never>?
     private var spotifySelectionTask: Task<Void, Never>?
+    private var spotifySelectionID = UUID()
     @Published var appLaunchError: String?
     private var debounceIdleTask: Task<Void, Never>?
 
@@ -32,6 +33,8 @@ class MusicManager: ObservableObject {
     @Published var songTitle: String = "Nothing playing"
     @Published var artistName: String = "Choose a track to get started"
     @Published var albumArt: NSImage = defaultImage
+    @Published var currentTrackURI: String?
+    @Published var pendingSpotifyTrackURI: String?
     @Published var isPlaying = false
     @Published var album: String = ""
     @Published var isPlayerIdle: Bool = true
@@ -89,6 +92,7 @@ class MusicManager: ObservableObject {
     
     public func destroy() {
         debounceIdleTask?.cancel()
+        spotifySelectionTask?.cancel()
         controllerSelectionTask?.cancel()
         cancellables.removeAll()
         controllerCancellables.removeAll()
@@ -155,6 +159,7 @@ class MusicManager: ObservableObject {
             self.albumArt = defaultImage
             self.songDuration = 0
             self.elapsedTime = 0
+            self.currentTrackURI = nil
             self.isPlaying = false
             self.isPlayerIdle = true
             if let controller = self.createController(for: type) {
@@ -179,6 +184,7 @@ class MusicManager: ObservableObject {
     // MARK: - Update Methods
     @MainActor
     private func updateFromPlaybackState(_ state: PlaybackState) {
+        currentTrackURI = state.trackURI
         // Check for playback state changes (playing/paused)
         if state.isPlaying != self.isPlaying {
             NSLog("Playback state changed: \(state.isPlaying ? "Playing" : "Paused")")
@@ -599,6 +605,7 @@ class MusicManager: ObservableObject {
     }
 
     func pause() {
+        cancelSpotifySelection()
         Task {
             await activeController?.pause()
         }
@@ -616,7 +623,14 @@ class MusicManager: ObservableObject {
         }
     }
     
+    private func cancelSpotifySelection() {
+        spotifySelectionTask?.cancel()
+        spotifySelectionID = UUID()
+        pendingSpotifyTrackURI = nil
+    }
+
     func togglePlay() {
+        cancelSpotifySelection()
         if Defaults[.mediaController] == .spotify && !isSpotifyRunning {
             if Defaults[.openSpotifyOnPlay] {
                 Task { @MainActor in
@@ -679,38 +693,54 @@ class MusicManager: ObservableObject {
         return running
     }
 
+    func toggleSpotifyTrack(_ track: SpotifyTrack, context: String?) {
+        if bundleIdentifier == "com.spotify.client" && currentTrackURI == track.uri { togglePlay() }
+        else { playSpotifyURI(track.uri, context: context) }
+    }
+
     func playSpotifyURI(_ uri: String, context: String? = nil) {
         guard let request = SpotifyPlaybackRequest(uri: uri, context: context) else {
             appLaunchError = "That Spotify item cannot be played."
             return
         }
         spotifySelectionTask?.cancel()
+        let selectionID = UUID()
+        spotifySelectionID = selectionID
+        pendingSpotifyTrackURI = request.uri
+        appLaunchError = nil
         spotifySelectionTask = Task { @MainActor in
+            defer { if self.spotifySelectionID == selectionID { self.pendingSpotifyTrackURI = nil } }
+            let accountID = SpotifyLibrary.shared.playbackAccountID
             do {
-                let accountID = SpotifyLibrary.shared.playbackAccountID
-                Defaults[.mediaController] = .spotify
+                if Defaults[.mediaController] != .spotify { Defaults[.mediaController] = .spotify }
                 let spotify = try await ensureSpotifyHidden()
                 defer { spotify.hide() }
                 try Task.checkCancellation()
                 guard SpotifyLibrary.shared.playbackAccountID == accountID else { throw CancellationError() }
-                try await SpotifyLibrary.shared.playOnThisMac(request)
+                let snapshot = try await SpotifyLibrary.shared.playOnThisMac(request)
+                try Task.checkCancellation()
+                guard spotifySelectionID == selectionID, SpotifyLibrary.shared.playbackAccountID == accountID else { return }
+                (activeController as? SpotifyController)?.acceptConfirmedPlayback(snapshot)
                 appLaunchError = nil
                 forceUpdate()
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
             } catch {
+                guard spotifySelectionID == selectionID, SpotifyLibrary.shared.playbackAccountID == accountID, !Task.isCancelled else { return }
                 appLaunchError = error is URLError ? "Spotify could not be reached. Check your connection and try again." : error.localizedDescription
             }
         }
     }
 
     func nextTrack() {
+        cancelSpotifySelection()
         Task {
             await activeController?.nextTrack()
         }
     }
 
     func previousTrack() {
+        cancelSpotifySelection()
         Task {
             await activeController?.previousTrack()
         }

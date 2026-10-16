@@ -320,21 +320,7 @@ struct SpotifyBrowserView: View {
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 1) {
                         ForEach(library.tracks, id: \.id) { track in
-                            Button { music.playSpotifyURI(track.uri, context: context) } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "play.fill").font(.system(size: 9)).foregroundStyle(.secondary)
-                                        .frame(width: 14)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(track.name).foregroundStyle(.primary).lineLimit(1)
-                                        Text(track.artists).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    Text(duration(track.durationMS)).monospacedDigit().foregroundStyle(.secondary)
-                                }
-                                .font(.system(size: 11)).padding(.vertical, 4).padding(.horizontal, 5)
-                                .contentShape(Rectangle())
-                            }
-                            .help("Play \(track.name)").accessibilityLabel("Play \(track.name), by \(track.artists)")
+                            trackRow(track, context: context)
                         }
                     }
                 }
@@ -342,6 +328,38 @@ struct SpotifyBrowserView: View {
                 .scrollIndicators(.automatic).disabled(library.isLoading)
             }
         }
+    }
+
+    private func trackRow(_ track: SpotifyTrack, context: String?) -> some View {
+        let isActive = music.bundleIdentifier == "com.spotify.client" && music.currentTrackURI == track.uri
+        let isPending = music.pendingSpotifyTrackURI == track.uri
+        let action = isActive ? (music.isPlaying ? "Pause" : "Resume") : "Play"
+        return Button { music.toggleSpotifyTrack(track, context: context) } label: {
+            HStack(spacing: 8) {
+                Group {
+                    if isPending {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: isActive && music.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(isActive ? Color.green : Color.secondary)
+                    }
+                }
+                .frame(width: 14, height: 14)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.name).foregroundStyle(isActive ? Color.green : Color.primary).lineLimit(1)
+                    Text(track.artists).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(duration(track.durationMS)).monospacedDigit().foregroundStyle(.secondary)
+            }
+            .font(.system(size: 11)).padding(.vertical, 4).padding(.horizontal, 5)
+            .contentShape(Rectangle())
+        }
+        .disabled(isPending)
+        .help("\(isPending ? "Starting" : action) \(track.name), by \(track.artists)")
+        .accessibilityLabel("\(action) \(track.name), by \(track.artists)")
+        .accessibilityValue(isPending ? "Starting playback" : isActive ? (music.isPlaying ? "Playing" : "Paused") : "")
     }
 
     private var showsAlbums: Bool { !showsTracks && (submittedQuery != nil || section == .albums) }

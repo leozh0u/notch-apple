@@ -73,6 +73,7 @@ struct SpotifyLibraryChecks {
         } catch is DecodingError {}
         checkPageWindows()
         try checkLibraryFixtures(trackJSON: trackJSON)
+        try await checkPlaybackHTTP()
         try await checkConnectionLifecycle()
         try await checkRefreshTransactions()
         #if SPOTIFY_KEYCHAIN_TESTING
@@ -164,6 +165,72 @@ struct SpotifyLibraryChecks {
         let wrappedPage = "[{\"track\":\(trackJSON)},{\"item\":null},null,{\"item\":\(episode)},{\"item\":\(trackJSON)}]"
         let entries = try decoder.decode([SpotifyTrackItem].self, from: Data(wrappedPage.utf8))
         precondition(entries.count == 5 && entries.compactMap(\.track).count == 2, "Mixed playlist entries retain valid music")
+    }
+
+    @MainActor
+    private static func checkPlaybackHTTP() async throws {
+        let track = "spotify:track:0123456789ABCDEFGHIJKL"
+        let oldTrack = "spotify:track:ABCDEFGHIJKL0123456789"
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PlaybackHTTPStub.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel(); PlaybackHTTPStub.handler = nil }
+        let library = SpotifyLibrary.connectedForTesting(session: session)
+        library.preferredPlaybackDeviceID = "test-mac"
+        defer { library.preferredPlaybackDeviceID = "" }
+        var active = false
+        var selected = false
+        var snapshotCount = 0
+        var calls: [String] = []
+        func deviceJSON() -> String {
+            "{\"id\":\"test-mac\",\"name\":\"Test Mac\",\"type\":\"computer\",\"is_restricted\":false,\"is_active\":\(active)}"
+        }
+        func snapshot(_ uri: String) -> Data {
+            Data("{\"device\":\(deviceJSON()),\"is_playing\":true,\"item\":{\"uri\":\"\(uri)\",\"name\":\"Fixture song\",\"artists\":[{\"name\":\"Fixture artist\"}],\"duration_ms\":123000},\"progress_ms\":0}".utf8)
+        }
+        PlaybackHTTPStub.handler = { request in
+            precondition(request.url?.host == "api.spotify.com")
+            precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-access")
+            let path = request.url!.path
+            calls.append("\(request.httpMethod!) \(path)")
+            if path == "/v1/me/player/devices" { return (200, Data("{\"devices\":[\(deviceJSON())]}".utf8)) }
+            if request.httpMethod == "PUT", path == "/v1/me/player" {
+                let body = try JSONSerialization.jsonObject(with: PlaybackHTTPStub.body(request)) as! [String: Any]
+                precondition(body["device_ids"] as? [String] == ["test-mac"] && body["play"] as? Bool == false)
+                active = true
+                return (204, Data())
+            }
+            if path == "/v1/me/player/play" {
+                precondition(active, "Inactive Mac must be transferred before selecting music")
+                precondition(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first?.value == "test-mac")
+                let body = try JSONSerialization.jsonObject(with: PlaybackHTTPStub.body(request)) as! [String: Any]
+                precondition(body["uris"] as? [String] == [track] && body["context_uri"] == nil, "Liked songs send explicit track URI, not library context or resume")
+                selected = true
+                return (204, Data())
+            }
+            precondition(path == "/v1/me/player" && selected)
+            snapshotCount += 1
+            // Spotify can briefly return its old track after acknowledging a command.
+            return (200, snapshot(snapshotCount == 1 ? oldTrack : track))
+        }
+        let confirmed = try await library.playOnThisMac(SpotifyPlaybackRequest(uri: track)!)
+        precondition(confirmed.item?.uri == track && snapshotCount == 2)
+        precondition(calls.prefix(4) == ["GET /v1/me/player/devices", "PUT /v1/me/player", "GET /v1/me/player/devices", "PUT /v1/me/player/play"])
+
+        // An HTTP acknowledgement with the wrong song must never produce a green/playing row.
+        var playCount = 0
+        PlaybackHTTPStub.handler = { request in
+            if request.url!.path == "/v1/me/player/devices" { return (200, Data("{\"devices\":[\(deviceJSON())]}".utf8)) }
+            if request.httpMethod == "PUT" { playCount += 1; return (204, Data()) }
+            return (200, snapshot(oldTrack))
+        }
+        do {
+            _ = try await library.playOnThisMac(SpotifyPlaybackRequest(uri: track)!)
+            preconditionFailure("Wrong-song acknowledgement must fail confirmation")
+        } catch let error as SpotifyLibraryError {
+            precondition(error.localizedDescription.contains("did not start"))
+        }
+        precondition(playCount == 2, "Recovery retry is bounded")
     }
 
     @MainActor
@@ -274,5 +341,34 @@ private final class RefreshGate {
     func release() {
         continuation?.resume()
         continuation = nil
+    }
+}
+
+private final class PlaybackHTTPStub: URLProtocol {
+    static var handler: ((URLRequest) throws -> (Int, Data))?
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "api.spotify.com" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        do {
+            let (status, data) = try Self.handler!(request)
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch { client?.urlProtocol(self, didFailWithError: error) }
+    }
+    override func stopLoading() {}
+    static func body(_ request: URLRequest) -> Data {
+        if let data = request.httpBody { return data }
+        guard let stream = request.httpBodyStream else { return Data() }
+        stream.open(); defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while true {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count <= 0 { break }
+            data.append(contentsOf: buffer.prefix(count))
+        }
+        return data
     }
 }

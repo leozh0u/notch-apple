@@ -11,6 +11,13 @@ struct SpotifyPlaybackRequest {
         self.context = context
     }
 
+    static func trackURI(from identifier: String?) -> String? {
+        guard let identifier else { return nil }
+        if validURI(identifier, types: ["track"]) { return identifier }
+        let uri = "spotify:track:\(identifier)"
+        return validURI(uri, types: ["track"]) ? uri : nil
+    }
+
     private static func validURI(_ value: String, types: Set<String>) -> Bool {
         let parts = value.split(separator: ":", omittingEmptySubsequences: false)
         return parts.count == 3 && parts[0] == "spotify" && types.contains(String(parts[1]))
@@ -29,7 +36,7 @@ struct SpotifyPlaybackRequest {
                     body = ["uris": [uri], "position_ms": 0]
                 }
             } else {
-                body = ["context_uri": uri, "position_ms": 0]
+                body = ["context_uri": uri, "offset": ["position": 0], "position_ms": 0]
             }
             return try JSONSerialization.data(withJSONObject: body, options: .sortedKeys)
         }
@@ -41,6 +48,7 @@ struct SpotifyPlaybackDevice: Decodable {
     let name: String
     let type: String
     let is_restricted: Bool
+    var is_active: Bool = false
 
     var isUsableComputer: Bool {
         type.lowercased() == "computer" && !is_restricted && id?.isEmpty == false
@@ -52,6 +60,34 @@ struct SpotifyPlaybackDevice: Decodable {
         let names = Set(hostNames.map { $0.precomposedStringWithCanonicalMapping.lowercased() })
         let matches = usable.filter { names.contains($0.name.precomposedStringWithCanonicalMapping.lowercased()) }
         return matches.count == 1 ? matches.first : nil
+    }
+}
+
+struct SpotifyPlaybackSnapshot: Decodable {
+    struct Item: Decodable {
+        struct Artist: Decodable { let name: String }
+        struct Album: Decodable { let name: String }
+        struct Link: Decodable { let uri: String }
+        let uri: String
+        let name: String
+        let artists: [Artist]
+        let duration_ms: Int
+        let album: Album?
+        let linked_from: Link?
+    }
+    struct Context: Decodable { let uri: String }
+    let device: SpotifyPlaybackDevice
+    let is_playing: Bool
+    let item: Item?
+    let context: Context?
+    let progress_ms: Int?
+
+    func confirms(_ request: SpotifyPlaybackRequest, deviceID: String) -> Bool {
+        guard device.id == deviceID, is_playing, let item else { return false }
+        if request.uri.hasPrefix("spotify:track:") {
+            return item.uri == request.uri || item.linked_from?.uri == request.uri
+        }
+        return context?.uri == request.uri
     }
 }
 

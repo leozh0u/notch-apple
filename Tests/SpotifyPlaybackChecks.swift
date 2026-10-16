@@ -5,6 +5,13 @@ import Foundation
         let track = "spotify:track:0123456789ABCDEFGHIJKL"
         let album = "spotify:album:abcdefghijklmnopqrstuv"
         let request = SpotifyPlaybackRequest(uri: track, context: album)!
+        assert(SpotifyPlaybackRequest.trackURI(from: track) == track)
+        assert(SpotifyPlaybackRequest.trackURI(from: "0123456789ABCDEFGHIJKL") == track)
+        assert(SpotifyPlaybackRequest.trackURI(from: "spotify:local:foo") == nil)
+        let before = PlaybackState(bundleIdentifier: "com.spotify.client", trackURI: track)
+        var after = before
+        after.trackURI = "spotify:track:ABCDEFGHIJKL0123456789"
+        assert(before != after, "Identical metadata with a different song ID must publish an update")
 
         let body = try! JSONSerialization.jsonObject(with: request.playbackBody) as! [String: Any]
         assert(body["context_uri"] as? String == album)
@@ -13,7 +20,7 @@ import Foundation
         let single = try! JSONSerialization.jsonObject(with: SpotifyPlaybackRequest(uri: track)!.playbackBody) as! [String: Any]
         assert(single["uris"] as? [String] == [track] && single["context_uri"] == nil)
         let collection = try! JSONSerialization.jsonObject(with: SpotifyPlaybackRequest(uri: album)!.playbackBody) as! [String: Any]
-        assert(collection["context_uri"] as? String == album && collection["offset"] == nil)
+        assert(collection["context_uri"] as? String == album && (collection["offset"] as? [String: Int])?["position"] == 0)
         let event = SpotifyPlaybackTransport.makeEvent(command: "Play")
         assert(event.eventClass == 0x73706679)
         assert(SpotifyPlaybackTransport.sendOptions.contains(.waitForReply))

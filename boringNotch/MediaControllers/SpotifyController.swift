@@ -119,8 +119,9 @@ class SpotifyController: MediaControllerProtocol {
         }
         guard let descriptor = try? await fetchPlaybackInfoAsync() else { return }
         guard !playbackCommandPending, playbackCommandRevision == revision,
-              descriptor.numberOfItems >= 10 else { return }
+              descriptor.numberOfItems >= 11 else { return }
         
+        let trackURI = SpotifyPlaybackRequest.trackURI(from: descriptor.atIndex(11)?.stringValue)
         let isPlaying = descriptor.atIndex(1)?.booleanValue ?? false
         let currentTrack = descriptor.atIndex(2)?.stringValue ?? "Unknown"
         let currentTrackArtist = descriptor.atIndex(3)?.stringValue ?? "Unknown"
@@ -134,6 +135,7 @@ class SpotifyController: MediaControllerProtocol {
         
         var state = PlaybackState(
             bundleIdentifier: "com.spotify.client",
+            trackURI: trackURI,
             isPlaying: isPlaying,
             title: currentTrack,
             artist: currentTrackArtist,
@@ -185,6 +187,28 @@ class SpotifyController: MediaControllerProtocol {
         }
     }
     
+    @MainActor
+    func acceptConfirmedPlayback(_ snapshot: SpotifyPlaybackSnapshot) {
+        guard let item = snapshot.item else { return }
+        playbackCommandRevision += 1
+        playbackCommandPending = false
+        artworkFetchTask?.cancel()
+        lastArtworkURL = nil
+        var state = playbackState
+        state.trackURI = item.linked_from?.uri ?? item.uri
+        state.title = item.name
+        state.artist = item.artists.map(\.name).joined(separator: ", ")
+        state.album = item.album?.name ?? ""
+        state.duration = Double(item.duration_ms) / 1000
+        state.currentTime = Double(snapshot.progress_ms ?? 0) / 1000
+        state.isPlaying = snapshot.is_playing
+        state.playbackRate = snapshot.is_playing ? 1 : 0
+        state.lastUpdated = Date()
+        state.artwork = nil
+        confirmedPlaying = state.isPlaying
+        playbackState = state
+    }
+
 // MARK: - Private Methods
     
     @MainActor
@@ -245,9 +269,10 @@ class SpotifyController: MediaControllerProtocol {
                 set repeatState to repeating
                 set currentVolume to sound volume
                 set artworkURL to artwork url of current track
-                return {playerState, currentTrackName, currentTrackArtist, currentTrackAlbum, trackPosition, trackDuration, shuffleState, repeatState, currentVolume, artworkURL}
+                set trackURI to id of current track
+                return {playerState, currentTrackName, currentTrackArtist, currentTrackAlbum, trackPosition, trackDuration, shuffleState, repeatState, currentVolume, artworkURL, trackURI}
             on error
-                return {false, "Unknown", "Unknown", "Unknown", 0, 0, false, false, 50, ""}
+                return {false, "Unknown", "Unknown", "Unknown", 0, 0, false, false, 50, "", ""}
             end try
         end tell
         """

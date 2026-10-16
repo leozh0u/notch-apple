@@ -15,6 +15,7 @@ enum RepeatMode: Int, Codable {
 
 struct PlaybackState {
     var bundleIdentifier: String
+    var trackURI: String?
     var isPlaying: Bool = false
     var title: String = "Nothing playing"
     var artist: String = "Choose a track to get started"
@@ -33,6 +34,7 @@ struct PlaybackState {
 extension PlaybackState: Equatable {
     static func == (lhs: PlaybackState, rhs: PlaybackState) -> Bool {
         return lhs.bundleIdentifier == rhs.bundleIdentifier
+            && lhs.trackURI == rhs.trackURI
             && lhs.isPlaying == rhs.isPlaying
             && lhs.title == rhs.title
             && lhs.artist == rhs.artist
