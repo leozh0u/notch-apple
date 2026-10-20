@@ -18,6 +18,10 @@ final class ShelfStateViewModel: ObservableObject {
 
     @Published var isLoading: Bool = false
     @Published var importError: String?
+    @Published private(set) var copiedPhotoCount = 0
+    private var importEpoch = UUID()
+    private var latestImport = UUID()
+    private var activeImports = 0
 
     var isEmpty: Bool { items.isEmpty }
 
@@ -50,6 +54,20 @@ final class ShelfStateViewModel: ObservableObject {
         items.removeAll { $0.id == item.id }
     }
 
+    func clear() {
+        importEpoch = UUID()
+        activeImports = 0
+        isLoading = false
+        copiedPhotoCount = 0
+        importError = nil
+        updateTask?.cancel()
+        pendingBookmarkUpdates.removeAll()
+        let removed = items
+        items = []
+        ShelfSelectionModel.shared.clear()
+        for item in removed { item.cleanupStoredData() }
+    }
+
     func updateBookmark(for item: ShelfItem, bookmark: Data) {
         guard let idx = items.firstIndex(where: { $0.id == item.id }) else { return }
         if case .file = items[idx].kind {
@@ -79,19 +97,36 @@ final class ShelfStateViewModel: ObservableObject {
     }
 
 
-    func load(_ providers: [NSItemProvider]) {
+    func load(_ providers: [NSItemProvider], pasteboard: NSPasteboard = .general) {
         guard !providers.isEmpty else { return }
         importError = nil
+        copiedPhotoCount = 0
+        let epoch = importEpoch
+        let importID = UUID()
+        latestImport = importID
+        activeImports += 1
         isLoading = true
         Task { [weak self] in
             let dropped = await ShelfDropService.items(from: providers)
-            await MainActor.run {
-                self?.add(dropped.items)
-                if dropped.failedCount > 0 {
-                    self?.importError = "Couldn't add \(dropped.failedCount) \(dropped.failedCount == 1 ? "item" : "items"). Try Add files to choose files directly."
-                }
-                self?.isLoading = false
+            guard let self, epoch == self.importEpoch else {
+                for item in dropped.items { item.cleanupStoredData() }
+                return
             }
+            self.add(dropped.items)
+            if dropped.failedCount > 0 {
+                self.importError = "Couldn't add \(dropped.failedCount) \(dropped.failedCount == 1 ? "item" : "items"). Try Add files to choose files directly."
+            }
+            let bookmarks = dropped.items.compactMap { item -> Data? in
+                if case .file(let data) = item.kind { return data }
+                return nil
+            }
+            let photos = await ShelfPhotoClipboard.prepare(bookmarks: bookmarks)
+            guard epoch == self.importEpoch else { return }
+            if importID == self.latestImport, ShelfPhotoClipboard.write(photos, to: pasteboard) {
+                self.copiedPhotoCount = photos.count
+            }
+            self.activeImports -= 1
+            self.isLoading = self.activeImports > 0
         }
     }
 
@@ -110,23 +145,24 @@ final class ShelfStateViewModel: ObservableObject {
     }
 
     func cleanupInvalidItems() {
+        let epoch = importEpoch
         Task { [weak self] in
             guard let self else { return }
-            var keep: [ShelfItem] = []
+            var invalidIDs: Set<UUID> = []
             for item in self.items {
                 switch item.kind {
                 case .file(let data):
                     let bookmark = Bookmark(data: data)
-                    if await bookmark.validate() {
-                        keep.append(item)
-                    } else {
+                    if !(await bookmark.validate()) {
+                        invalidIDs.insert(item.id)
                         item.cleanupStoredData()
                     }
                 default:
-                    keep.append(item)
+                    break
                 }
             }
-            await MainActor.run { self.items = keep }
+            guard epoch == self.importEpoch else { return }
+            self.items.removeAll { invalidIDs.contains($0.id) }
         }
     }
 

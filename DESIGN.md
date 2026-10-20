@@ -77,6 +77,10 @@ The editor is 260 pt wide with 18 pt padding. Its dial occupies 156 by 156 pt, w
 
 Starting focus closes the editor, unpins the island and requests that it close. Pause keeps the remaining duration; End/Reset restores the selected duration. Actions have stable dimensions, help text and explicit accessibility labels. Appearance settings can hide the footer. The timer resets when the app quits.
 
+### Shelf photo clipboard
+
+Keep AirDrop on the left and the persistent Shelf drop area on the right. The empty area explains that photos copy automatically. Successful photo imports keep their Shelf items and write native image bytes to the clipboard, with the last copy result in the footer. Add files remains available; Clear All appears when there are items or an import in progress. Clear All removes Shelf references and owned temporary files, clears selection and closes Quick Look, while preserving originals and the clipboard. An in-progress import cannot repopulate the cleared Shelf. Right-click Copy copies retained photos again. The panel's shape, dimensions and placement stay unchanged.
+
 ### Optional Calendar
 
 Calendar is off by default until the user chooses setup in Settings. Connect Calendar requests macOS Calendar access and enables upcoming events after full access is granted. Google accounts connect through macOS Calendar's Add Account flow. The optional upcoming-event area belongs beside music, with no Calendar shortcut in the focus footer.

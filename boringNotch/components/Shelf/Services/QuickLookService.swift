@@ -48,11 +48,12 @@ final class QuickLookService: ObservableObject {
     }
 
     func hide() {
+        let panelToClose = previewPanel
         stopAccessingCurrentURLs()
         selectedURL = nil
         urls.removeAll()
         isQuickLookOpen = false
-        if let panel = previewPanel, panel.isVisible {
+        if let panel = panelToClose, panel.isVisible {
             panel.orderOut(nil)
         }
         if let panel = previewPanel {

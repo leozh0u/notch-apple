@@ -517,14 +517,22 @@ final class ShelfItemViewModel: ObservableObject {
                 }
                 ShelfItemViewModel.copiedURLs.removeAll()
                 
-                pb.clearContents()
                 Task {
+                    let bookmarks = selected.compactMap { item -> Data? in
+                        if case .file(let data) = item.kind { return data }
+                        return nil
+                    }
+                    let photos = await ShelfPhotoClipboard.prepare(bookmarks: bookmarks)
+                    if photos.count == selected.count, ShelfPhotoClipboard.write(photos, to: pb) {
+                        return
+                    }
                     let fileURLs = await selected.asyncCompactMap { item -> URL? in
                         if case .file = item.kind {
                             return ShelfStateViewModel.shared.resolveAndUpdateBookmark(for: item)
                         }
                         return nil
                     }
+                    pb.clearContents()
                     if !fileURLs.isEmpty {
                         // Start security-scoped access for all URLs and keep them active
                         ShelfItemViewModel.copiedURLs = fileURLs.filter { $0.startAccessingSecurityScopedResource() }

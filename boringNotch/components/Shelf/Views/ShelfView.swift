@@ -21,7 +21,7 @@ struct ShelfView: View {
                 .aspectRatio(1, contentMode: .fit)
                 .environmentObject(vm)
             panel
-                .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], isTargeted: $vm.dragDetectorTargeting) { providers in
+                .onDrop(of: [.fileURL, .image, .url, .utf8PlainText, .plainText, .data], isTargeted: $vm.dragDetectorTargeting) { providers in
                     handleDrop(providers: providers)
                 }
         }
@@ -78,9 +78,30 @@ struct ShelfView: View {
             .overlay {
                 VStack(spacing: 8) {
                     content
-                    Button("Add files…") { tvm.chooseFiles() }
-                        .buttonStyle(.borderless)
-                        .help("Choose files or folders to add to Shelf")
+                    HStack {
+                        Button("Add files…") { tvm.chooseFiles() }
+                            .help("Choose files or folders to add to Shelf")
+                        Spacer(minLength: 8)
+                        if tvm.isLoading {
+                            ProgressView().controlSize(.small)
+                                .accessibilityLabel("Adding to Shelf")
+                        } else if tvm.copiedPhotoCount > 0 {
+                            Label(tvm.copiedPhotoCount == 1 ? "Photo copied" : "\(tvm.copiedPhotoCount) photos copied", systemImage: "checkmark")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .help("Press Command-V to paste. Right-click a photo and choose Copy to copy it again.")
+                        }
+                        if !tvm.isEmpty || tvm.isLoading {
+                            Spacer(minLength: 8)
+                            Button("Clear All") {
+                                quickLookService.hide()
+                                tvm.clear()
+                            }
+                            .disabled(selection.isDragging)
+                            .help("Remove everything from Shelf. Original files and the clipboard are kept.")
+                        }
+                    }
+                    .buttonStyle(.borderless)
                 }
                 .padding()
             }
@@ -105,6 +126,9 @@ struct ShelfView: View {
                         .foregroundStyle(.gray)
                         .font(.system(.title3, design: .rounded))
                         .fontWeight(.medium)
+                    Text("Photos copy automatically")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             } else {
                 ScrollView(.horizontal) {
@@ -117,7 +141,7 @@ struct ShelfView: View {
                 }
                 .padding(-spacing)
                 .scrollIndicators(.never)
-                .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], isTargeted: $vm.dragDetectorTargeting) { providers in
+                .onDrop(of: [.fileURL, .image, .url, .utf8PlainText, .plainText, .data], isTargeted: $vm.dragDetectorTargeting) { providers in
                     handleDrop(providers: providers)
                 }
             }

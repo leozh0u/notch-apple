@@ -32,6 +32,14 @@ struct ShelfDropService {
                 return await ShelfItem(kind: .file(bookmark: bookmark), isTemporary: false)
             }
         }
+
+        // Browser and Photos drags can offer both an image and its web URL; keep the photo.
+        for identifier in provider.registeredTypeIdentifiers {
+            if let type = UTType(identifier), type.conforms(to: .image),
+               let item = await storedItem(provider, typeIdentifier: identifier) {
+                return item
+            }
+        }
         
         if let url = await provider.extractURL() {
             if url.isFileURL {
@@ -51,18 +59,23 @@ struct ShelfDropService {
         for typeIdentifier in provider.registeredTypeIdentifiers {
             guard let type = UTType(typeIdentifier), type.conforms(to: .item),
                   !type.conforms(to: .url), !type.conforms(to: .text) else { continue }
-            if let bookmark = await copyFileRepresentation(provider, typeIdentifier: typeIdentifier) {
+            if let item = await storedItem(provider, typeIdentifier: typeIdentifier) { return item }
+        }
+
+        return nil
+    }
+
+    private static func storedItem(_ provider: NSItemProvider, typeIdentifier: String) async -> ShelfItem? {
+        if let bookmark = await copyFileRepresentation(provider, typeIdentifier: typeIdentifier) {
+            return await ShelfItem(kind: .file(bookmark: bookmark), isTemporary: true)
+        }
+        if let data = await loadData(provider, typeIdentifier: typeIdentifier),
+           let url = await TemporaryFileStorageService.shared.createTempFile(for: .data(data, suggestedName: provider.suggestedName)) {
+            if let bookmark = createBookmark(for: url) {
                 return await ShelfItem(kind: .file(bookmark: bookmark), isTemporary: true)
             }
-            if let data = await loadData(provider, typeIdentifier: typeIdentifier),
-               let url = await TemporaryFileStorageService.shared.createTempFile(for: .data(data, suggestedName: provider.suggestedName)) {
-                if let bookmark = createBookmark(for: url) {
-                    return await ShelfItem(kind: .file(bookmark: bookmark), isTemporary: true)
-                }
-                TemporaryFileStorageService.shared.removeTemporaryFileIfNeeded(at: url)
-            }
+            TemporaryFileStorageService.shared.removeTemporaryFileIfNeeded(at: url)
         }
-        
         return nil
     }
     
