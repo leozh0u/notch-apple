@@ -212,7 +212,7 @@ struct ContentView: View {
             anchor: .top
         )
         .animation(.smooth, value: gestureProgress)
-        .background(dragDetector)
+        .background(alignment: .top) { dragDetector }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("notchAppleFocusStarted"))) { _ in
             coordinator.isIslandPinned = false
             vm.isSpotifySearchFocused = false
@@ -496,7 +496,7 @@ struct ContentView: View {
     var dragDetector: some View {
         if Defaults[.boringShelf] && vm.notchState == .closed {
             Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(width: computedChinWidth, height: max(10, vm.effectiveClosedNotchHeight))
                 .contentShape(Rectangle())
         .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], isTargeted: $vm.dragDetectorTargeting) { providers in
             vm.dropEvent = true

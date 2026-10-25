@@ -36,6 +36,26 @@ final class DragDetector {
         self.notchRegion = notchRegion
     }
 
+    static func activationRegion(screenFrame: CGRect, closedNotchSize: CGSize) -> CGRect {
+        // Stay near the closed notch, not the much larger invisible expanded panel.
+        let width = min(screenFrame.width, closedNotchSize.width + 40)
+        let height = min(screenFrame.height, max(10, closedNotchSize.height) + 8)
+        return CGRect(x: screenFrame.midX - width / 2, y: screenFrame.maxY - height,
+                      width: width, height: height)
+    }
+
+    func updateDragLocation(_ mouseLocation: CGPoint) {
+        onDragMove?(mouseLocation)
+        let containsMouse = notchRegion.contains(mouseLocation)
+        if containsMouse && !hasEnteredNotchRegion {
+            hasEnteredNotchRegion = true
+            onDragEntersNotchRegion?()
+        } else if !containsMouse && hasEnteredNotchRegion {
+            hasEnteredNotchRegion = false
+            onDragExitsNotchRegion?()
+        }
+    }
+
     // MARK: - Private Helpers
     
     /// Checks if the drag pasteboard contains valid content types that can be dropped on the shelf
@@ -74,18 +94,7 @@ final class DragDetector {
 
             // Only process position when content is being dragged
             if self.isContentDragging {
-                let mouseLocation = NSEvent.mouseLocation
-                self.onDragMove?(mouseLocation)
-                
-                // Track notch region entry/exit
-                let containsMouse = self.notchRegion.contains(mouseLocation)
-                if containsMouse && !self.hasEnteredNotchRegion {
-                    self.hasEnteredNotchRegion = true
-                    self.onDragEntersNotchRegion?()
-                } else if !containsMouse && self.hasEnteredNotchRegion {
-                    self.hasEnteredNotchRegion = false
-                    self.onDragExitsNotchRegion?()
-                }
+                self.updateDragLocation(NSEvent.mouseLocation)
             }
         }
 

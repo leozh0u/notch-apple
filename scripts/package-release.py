@@ -33,7 +33,7 @@ for arch in ['arm64', 'x86_64']:
         resources = app / 'Contents/Resources'
         shutil.copy2(root/'LICENSE', resources/'NotchApple-LICENSE.txt')
         shutil.copy2(root/'THIRD_PARTY_LICENSES', resources/'NotchApple-THIRD-PARTY-LICENSES.txt')
-        (resources/'NotchApple-SOURCE.txt').write_text('Corresponding source: https://github.com/leozh0u/notch-apple/tree/v0.3.4\n')
+        (resources/'NotchApple-SOURCE.txt').write_text('Corresponding source: https://github.com/leozh0u/notch-apple/tree/v0.3.5\n')
         subprocess.run(['codesign', '--force', '--deep', '--sign', '-', '--preserve-metadata=entitlements,requirements,flags', str(app)], check=True)
         subprocess.run([sys.executable, str(root/'scripts/sign-preview.py'), str(app)], check=True)
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
